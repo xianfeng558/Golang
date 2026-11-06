@@ -1,0 +1,74 @@
+// 用户服务的接口合同。Login 负责登录，GetUserToken 负责让别的服务检查「这个人登录了没有」。
+/**
+* @Auth:ShenZ
+* @Description: 登录和校验令牌
+*/
+syntax = "proto3";    // 版本号
+option go_package="./;proto";     //参数1 表示生成到哪个目录 ，参数2 表示生成的文件的package
+package proto ;   //默认在哪个包
+//结构体
+/**
+	"avatar": "",
+		"clientId": 0,
+		"employeeId": 0,
+		"id": 0,
+		"nickname": "",
+		"phone": "",
+		"sessionId": "",
+		"systemId": 0,
+		"token": "",
+		"tokenExpireTime": "",
+		"unionId": ""
+**/
+message User {
+    string avatar = 1;
+    int32 clientId = 2;
+    int32 employeeId =3;
+    string nickname = 4;
+    string phone = 5;
+    string sessionId = 6;
+    string token = 7;
+    string tokenExpireTime = 8;
+    string unionId = 9;
+    int32 id = 10;
+}
+/**也可写这里  
+{
+    "clientId": 0,
+    "phone": "",
+    "systemId": 0,
+    "verificationCode": ""
+  }
+  **/
+//请求 request struct
+message LoginRequest {
+    int32 clientId = 1;
+    string phone = 2;
+    int32 systemId = 3;
+    string verificationCode = 4;
+}
+//响应 resp struct
+message LoginResp{
+    string token = 1;
+    User user = 2; 
+}
+//RPC 服务 接口
+service Login {
+    //rpc 服务
+    rpc Login (LoginRequest) returns (LoginResp){}
+}
+
+//  获取 分布式 token
+message TokenReq {
+    string uuid = 1;
+}
+//响应 resp struct
+message TokenResp{
+    string token = 1;
+    bool isLogin=2;
+}
+//RPC 服务 接口
+service GetUserToken {
+    //rpc 服务
+    rpc GetUserToken (TokenReq) returns (TokenResp){}
+}

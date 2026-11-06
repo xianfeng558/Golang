@@ -1,0 +1,16 @@
+go 1.25.4
+
+// common 目录的模块路径是 git.mashibing.com/msb_47094/shopping-comm。
+// 工作区会用这份本地代码，代替原来从网上拉取的公共库。
+// replace 补的是 go-micro v4.8 删掉、但 Consul 插件仍要引用的 cmd 包。
+
+use (
+	./goshop/common
+	./goshop/payment-service
+	./goshop/product-service
+	./goshop/shoppingCart-service
+	./goshop/trade-order
+	./goshop/user-service
+)
+
+replace go-micro.dev/v4/cmd => ./goshop/compat/microcmd

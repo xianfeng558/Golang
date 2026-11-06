@@ -1,0 +1,335 @@
+/**
+* @Auth:ShenZ
+* @Description:
+*/
+syntax = "proto3";    // 版本号
+option go_package="./;proto";     //参数1 表示生成到哪个目录 ，参数2 表示生成的文件的package
+package proto ;   //默认在哪个包
+
+
+//结构体
+ /*
+  "serverTime": "2022-11-01 11:08:13",
+		"expireTime": "2022-11-01 11:38:13",
+		"totalAmount": 190.00,
+		"productAmount": 190.00,
+		"shippingAmount": 0,
+		"discountAmount": 0.00,
+		"payAmount": 190.00,
+*/
+message TradeOrder {
+    string serverTime = 1;
+    string expireTime = 2;
+    float totalAmount =3;
+    float  productAmount = 4;
+    float shippingAmount = 5;
+    float discountAmount = 6;
+    float payAmount = 7;  //resp返回需要
+    //新增和修改需要
+    int32  iD = 8;
+    bool  isDeleted = 9;
+    int32  orderStatus = 10;
+    string  orderNo = 11;
+    int32   userId   =12 ;
+    int32   createUser   =13;
+    int32   updateUser   =14;
+    string cancelReason  =15;
+    string createTime  =16;
+    string submitTime  =17;
+}
+/**
+前端请求信息 新增购物车
+{
+   "number": 0,
+  "productId": 0,
+  "productSkuId": 0
+  }
+  **/
+//请求 request struct
+message AddTradeOrderReq {
+    repeated int32 cartIds = 1;
+    bool isVirtual = 2;
+    int32 recipientAddressId =3;
+    TradeOrder tradeOrder = 4;
+}
+
+message AddTradeOrderResp{
+    TradeOrder tradeOrder = 1;
+    repeated ProductOrder products =2;
+}
+//订单商品
+/**
+"productId": 74,
+			"productSkuId": 265,
+			"productName": "机器学习观止—核心原理与实践| 林学森 机器学习人工智能计算机",
+			"productImageUrl": "https://msb-edu-dev.oss-cn-beijing.aliyuncs.com/mall-product/productO1CN010A7WjS1CP1BmI67Qg-101450072.jpg_430x430q90.jpg",
+			"skuDescribe": "",
+			"quantity": 1,
+			"productPrice": 118.00,
+			"realPrice": 118.00,
+			"realAmount": 118.00
+ */
+message ProductOrder {
+    int32  productId = 1;
+    int32  productSkuId = 2;
+    string  productName = 3;
+    string  productImageUrl = 4;
+    string   skuDescribe   =5 ;
+    int32   quantity   =6;
+    float   productPrice   =7;
+    float realPrice  =8;
+    float realAmount  =9;
+}
+
+
+
+//RPC 服务 接口
+service AddTradeOrder {
+    //rpc 服务
+    rpc AddTradeOrder (AddTradeOrderReq) returns (AddTradeOrderResp){}
+}
+service UpdateTradeOrder {
+    //rpc 服务
+    rpc UpdateTradeOrder (AddTradeOrderReq) returns (AddTradeOrderResp){}
+}
+
+message ShoppingCart {
+    int32 id = 1;
+    int32 userId = 2;
+    int32 productId =3;
+    int32  productSkuId = 4;
+    string productName = 5;
+    string productMainPicture = 6;
+    int32 number = 7;
+    //查询修改所需
+    string updateTime =8;
+    string crateTime = 9;
+    int32 createUser = 10;
+    int32 updateUser = 11;
+    bool isDeleted = 12;
+}
+
+message UpdateCartReq {
+    int32 number = 1;
+    int32 productId = 2;
+    int32 productSkuId =3;
+    string productName = 4;
+    string productMainPicture = 5;
+    int32 userId =6;
+    int32 id = 7;
+    string updateTime =8;
+    string crateTime = 9;
+    int32 createUser = 10;
+    int32 updateUser = 11;
+    bool isDeleted = 12;
+}
+message UpdateCartResp {
+    int64 shoppingCartNumber = 3;
+    int64 canSetShoppingCartNumber = 4;
+    bool isBeyondMaxLimit = 5;
+    int32 ID = 6;
+}
+service UpdateCart {
+    //rpc 服务
+    rpc UpdateCart (UpdateCartReq) returns (UpdateCartResp){}
+}
+
+message FindCartReq {
+    int32 id = 1;
+    int32 userId = 2;
+    bool isDeleted = 3;
+}
+message FindCartResp {
+      ShoppingCart shoppingCart  = 1;
+}
+//查询购物车
+service FindCart {
+    rpc FindCart (FindCartReq) returns (FindCartResp){}
+}
+message Product {
+    int32 id = 1;
+    string name = 2;
+    int32 startingPrice =3;
+    string  mainPicture = 4;
+    map<string,string> labelList = 5;
+    int32 singleBuyLimit = 6;
+    string token = 7;
+    bool isEnable = 8;
+    int32 productType = 9;
+}
+/**
+前端请求信息
+{
+    "clientId": 0,
+    "phone": "",
+    "systemId": 0,
+    "verificationCode": ""
+  }
+  **/
+//请求 request struct
+message PageReq {
+    int32 length = 1;
+    int32 pageIndex = 2;
+}
+//响应 resp struct
+/**
+
+**/
+message PageResp{
+    repeated Product product = 1;
+    int64 total =2;
+    int64 rows = 3;
+}
+//RPC 服务 接口
+service Page {
+    //rpc 服务
+    rpc Page (PageReq) returns (PageResp){}
+}
+
+/**
+    ID                int32     `json:"id"`
+	Name              string    `json:"name"`
+	ProductType       int32     `gorm:"default:1" json:"productType"`
+	CategoryId        int32     `json:"categoryId"`
+	StartingPrice     float32   `json:"startingPrice"`
+	TotalStock        int32     `gorm:"default:1234" json:"totalStock"`
+	MainPicture       string    `gorm:"default:1" json:"mainPicture"`
+	RemoteAreaPostage float32   `json:"remoteAreaPostage"`
+	SingleBuyLimit    int32     `json:"singleBuyLimit"`
+	IsEnable          bool      `json:"isEnable"`
+	Remark            string    `gorm:"default:1" json:"remark"`
+	CreateUser        int32     `gorm:"default:1" json:"createUser"`
+	CreateTime        time.Time `json:"createTime"`
+	UpdateUser        int32     `json:"updateUser"`
+	UpdateTime        time.Time `json:"updateTime"`
+	IsDeleted         bool      `json:"isDeleted"`
+	Detail            string    `gorm:"dtail" json:"detail"`            //商品详情页面
+	PictureList       []string  `gorm:"pictureList" json:"pictureList"` //商品详情需要的图片
+ */
+message ProductDetail {
+    int32 id = 1;
+    string name = 2;
+    int32 productType =3;
+    int32  categoryId = 4;
+    float startingPrice =5;
+    int32  totalStock = 6;
+    string mainPicture =7;
+    float  remoteAreaPostage = 8;
+    int32 singleBuyLimit =9;
+    bool    isEnable =10;
+    string remark =11;
+    int32   createUser =12 ;
+    string  createTime = 13;  //go get google.golang.org/protobuf/ptypes/timestamp
+    int32   updateUser =14;
+    string updateTime =15;
+    bool    IsDeleted =16;
+    string detail =17;
+    string     pictureList =18;
+}
+//请求 request struct
+message ProductDetailReq {
+    int32 id = 1;
+}
+//响应 resp struct
+/**
+
+**/
+message ProductDetailResp{
+    repeated ProductDetail productDetail = 1;
+}
+//RPC 服务 接口
+service ShowProductDetail {
+    //rpc 服务
+    rpc ShowProductDetail (ProductDetailReq) returns (ProductDetailResp){}
+}
+/*
+SkuId               int32 `gorm:"column:id" json:"skuId"`
+	Name                string
+	AttributeSymbolList string  `gorm:"column:attribute_symbolList" json:"attributeSymbolList"`
+	SellPrice           float32 `gorm:"column:sell_price" json:"sellPrice"`
+	Stock               int32   `gorm:"default:1"`
+ */
+message ProductSku {
+    int32 skuId = 1;
+    string name = 2;
+    string attributeSymbolList =3;
+    float  sellPrice = 4;
+    int32 stock =5;
+}
+//请求 request struct
+message ProductSkuReq {
+    int32 productId = 1;
+}
+//响应 resp struct
+/**
+
+**/
+message ProductSkuResp{
+    repeated ProductSku productSku = 1;
+}
+//RPC 服务 接口
+service ShowProductSku {
+    //rpc 服务
+    rpc ShowProductSku (ProductSkuReq) returns (ProductSkuResp){}
+}
+//商品库存详情 服务 接口
+service ShowDetailSku {
+    //rpc 服务
+    rpc ShowDetailSku (ProductDetailReq) returns (ProductSkuResp){}
+}
+
+//  获取 分布式 token
+message TokenReq {
+    string uuid = 1;
+}
+//响应 resp struct
+message TokenResp{
+    string token = 1;
+    bool isLogin=2;
+}
+//RPC 服务 接口
+service GetUserToken {
+    //rpc 服务
+    rpc GetUserToken (TokenReq) returns (TokenResp){}
+}
+
+//修改库存
+message UpdateSkuReq{
+    ProductSku productSku = 1;
+}
+message UpdateSkuResp {
+    bool isSuccess =1;
+}
+service UpdateSku {
+    rpc UpdateSku (UpdateSkuReq) returns (UpdateSkuResp){}
+}
+
+
+//  计算订单价格 请求
+message OrderTotalReq {
+    repeated int32 cartIds = 1;
+}
+//计算订单价格 响应
+message OrderTotalResp{
+    float totalPrice = 1;
+}
+//RPC 计算订单价格 服务 接口
+service GetOrderTotal {
+    //rpc 服务
+    rpc GetOrderTotal (OrderTotalReq) returns (OrderTotalResp){}
+}
+
+
+//查询订单详情
+message FindOrderReq {
+    string id = 1;
+    string orderNo = 2;
+}
+message FindOrderResp {
+    TradeOrder tradeOrder  = 1;
+}
+//查询订单详情
+service FindOrder {
+    rpc FindOrder (FindOrderReq) returns (FindOrderResp){}
+}
+

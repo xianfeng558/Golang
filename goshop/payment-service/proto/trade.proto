@@ -1,0 +1,68 @@
+/**
+* @Auth:ShenZ
+* @Description:
+*/
+syntax = "proto3";    // 版本号
+option go_package="./;proto";     //参数1 表示生成到哪个目录 ，参数2 表示生成的文件的package
+package proto ;   //默认在哪个包
+message TradeOrder {
+  string serverTime = 1;
+  string expireTime = 2;
+  float totalAmount =3;
+  float  productAmount = 4;
+  float shippingAmount = 5;
+  float discountAmount = 6;
+  float payAmount = 7;  //resp返回需要
+  //新增和修改需要
+  int32  iD = 8;
+  bool  isDeleted = 9;
+  int32  orderStatus = 10;
+  string  orderNo = 11;
+  int32   userId   =12 ;
+  int32   createUser   =13;
+  int32   updateUser   =14;
+  string cancelReason  =15;
+  string createTime  =16;
+  string submitTime  =17;
+}
+
+//查询订单详情
+message FindOrderReq {
+  string id = 1;
+  string orderNo = 2;
+}
+message FindOrderResp {
+  TradeOrder tradeOrder  = 1;
+}
+//查询订单详情
+service FindOrder {
+  rpc FindOrder (FindOrderReq) returns (FindOrderResp){}
+}
+
+message AddTradeOrderReq {
+  repeated int32 cartIds = 1;
+  bool isVirtual = 2;
+  int32 recipientAddressId =3;
+  TradeOrder tradeOrder = 4;
+}
+message ProductOrder {
+  int32  productId = 1;
+  int32  productSkuId = 2;
+  string  productName = 3;
+  string  productImageUrl = 4;
+  string   skuDescribe   =5 ;
+  int32   quantity   =6;
+  float   productPrice   =7;
+  float realPrice  =8;
+  float realAmount  =9;
+}
+message AddTradeOrderResp{
+  TradeOrder tradeOrder = 1;
+  repeated ProductOrder products =2;
+}
+
+
+service UpdateTradeOrder {
+  //rpc 服务
+  rpc UpdateTradeOrder (AddTradeOrderReq) returns (AddTradeOrderResp){}
+}

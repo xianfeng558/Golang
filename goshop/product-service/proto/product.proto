@@ -1,167 +1,106 @@
-// 这是商品服务的接口合同，不是可运行的 Go 代码。
-// message 描述一块数据，字段后面的数字是编号，一旦发布就不要改，否则旧客户端会读错字段。
-// service 里的 rpc 是可以远程调用的方法。改完这个文件要用 protoc 重新生成 pb.go，不要手改生成结果。
-/**
-* @Auth:ShenZ
-* @Description: 商品列表、详情、规格和改库存
-*/
-syntax = "proto3";    // 版本号
-option go_package="./;proto";     //参数1 表示生成到哪个目录 ，参数2 表示生成的文件的package
-package proto ;   //默认在哪个包
+// 商品服务的接口合同。message 是一块数据，等号后面的数字是字段编号，发布后不要改。
+// service 里的 rpc 是可以远程调用的方法。改完要用 protoc 重新生成，不要手改 pb.go。
+syntax = "proto3";
+option go_package = "./;proto";
+package proto;
 
-
-//结构体
-/**
-            "id": 115, 
-            "name": "马歇尔MARSHALL STANMOREⅡ无线蓝牙音响家用复古重低音小音箱", 
-            "startingPrice": 3300, 
-            "mainPicture": "https://msb-edu-prod.oss-cn-beijing.aliyuncs.com/mall-product/product/d4f1f19e-2e90-4ac5-bbe3-1eba02085a0f.jpg", 
-            "labelList": [ ], 
-            "singleBuyLimit": null, 
-            "isEnable": null, 
-            "productType": null
-**/
+// Product 是列表页上的一件商品，不含具体规格。
 message Product {
     int32 id = 1;
     string name = 2;
-    int32 startingPrice =3;
-    string  mainPicture = 4;
-    map<string,string> labelList = 5;
+    int32 startingPrice = 3;
+    string mainPicture = 4;
+    map<string, string> labelList = 5;
     int32 singleBuyLimit = 6;
     string token = 7;
     bool isEnable = 8;
     int32 productType = 9;
 }
-/**
-前端请求信息
-{
-    "clientId": 0,
-    "phone": "",
-    "systemId": 0,
-    "verificationCode": ""
-  }
-  **/
-//请求 request struct
-message PageReq { 
+
+// PageReq 的 length 是每页条数，pageIndex 从 1 开始。
+message PageReq {
     int32 length = 1;
     int32 pageIndex = 2;
 }
-//响应 resp struct
-/**
 
-**/
-message PageResp{
-    repeated Product product = 1; 
-    int64 total =2;
+message PageResp {
+    repeated Product product = 1;
+    int64 total = 2;
     int64 rows = 3;
 }
-//RPC 服务 接口
+
 service Page {
-    //rpc 服务
-    rpc Page (PageReq) returns (PageResp){}
+    rpc Page (PageReq) returns (PageResp) {}
 }
 
-/**
-    ID                int32     `json:"id"`
-	Name              string    `json:"name"`
-	ProductType       int32     `gorm:"default:1" json:"productType"`
-	CategoryId        int32     `json:"categoryId"`
-	StartingPrice     float32   `json:"startingPrice"`
-	TotalStock        int32     `gorm:"default:1234" json:"totalStock"`
-	MainPicture       string    `gorm:"default:1" json:"mainPicture"`
-	RemoteAreaPostage float32   `json:"remoteAreaPostage"`
-	SingleBuyLimit    int32     `json:"singleBuyLimit"`
-	IsEnable          bool      `json:"isEnable"`
-	Remark            string    `gorm:"default:1" json:"remark"`
-	CreateUser        int32     `gorm:"default:1" json:"createUser"`
-	CreateTime        time.Time `json:"createTime"`
-	UpdateUser        int32     `json:"updateUser"`
-	UpdateTime        time.Time `json:"updateTime"`
-	IsDeleted         bool      `json:"isDeleted"`
-	Detail            string    `gorm:"dtail" json:"detail"`            //商品详情页面
-	PictureList       []string  `gorm:"pictureList" json:"pictureList"` //商品详情需要的图片
- */
+// ProductDetail 是详情页。detail 是图文，pictureList 是用逗号拼起来的图片地址。
 message ProductDetail {
     int32 id = 1;
     string name = 2;
-    int32 productType =3;
-    int32  categoryId = 4;
-    float startingPrice =5;
-    int32  totalStock = 6;
-    string mainPicture =7;
-    float  remoteAreaPostage = 8;
-    int32 singleBuyLimit =9;
-    bool    isEnable =10;
-    string remark =11;
-    int32   createUser =12 ;
-    string  createTime = 13;  //go get google.golang.org/protobuf/ptypes/timestamp
-    int32   updateUser =14;
-    string updateTime =15;
-    bool    IsDeleted =16;
-    string detail =17;
-     string     pictureList =18;
+    int32 productType = 3;
+    int32 categoryId = 4;
+    float startingPrice = 5;
+    int32 totalStock = 6;
+    string mainPicture = 7;
+    float remoteAreaPostage = 8;
+    int32 singleBuyLimit = 9;
+    bool isEnable = 10;
+    string remark = 11;
+    int32 createUser = 12;
+    string createTime = 13;
+    int32 updateUser = 14;
+    string updateTime = 15;
+    bool IsDeleted = 16;
+    string detail = 17;
+    string pictureList = 18;
 }
-//请求 request struct
+
 message ProductDetailReq {
     int32 id = 1;
 }
-//响应 resp struct
-/**
 
-**/
-message ProductDetailResp{
+message ProductDetailResp {
     repeated ProductDetail productDetail = 1;
 }
-//RPC 服务 接口
+
 service ShowProductDetail {
-    //rpc 服务
-    rpc ShowProductDetail (ProductDetailReq) returns (ProductDetailResp){}
+    rpc ShowProductDetail (ProductDetailReq) returns (ProductDetailResp) {}
 }
-/*
-SkuId               int32 `gorm:"column:id" json:"skuId"`
-	Name                string
-	AttributeSymbolList string  `gorm:"column:attribute_symbolList" json:"attributeSymbolList"`
-	SellPrice           float32 `gorm:"column:sell_price" json:"sellPrice"`
-	Stock               int32   `gorm:"default:1"`
- */
+
+// ProductSku 是可售规格。库存和售价记在这一层。
 message ProductSku {
     int32 skuId = 1;
     string name = 2;
-    string attributeSymbolList =3;
-    float  sellPrice = 4;
-    int32 stock =5;
+    string attributeSymbolList = 3;
+    float sellPrice = 4;
+    int32 stock = 5;
 }
-//请求 request struct
+
 message ProductSkuReq {
     int32 productId = 1;
 }
-//响应 resp struct
-/**
 
-**/
-message ProductSkuResp{
+message ProductSkuResp {
     repeated ProductSku productSku = 1;
 }
-//RPC 服务 接口
+
 service ShowProductSku {
-    //rpc 服务
-    rpc ShowProductSku (ProductSkuReq) returns (ProductSkuResp){}
+    rpc ShowProductSku (ProductSkuReq) returns (ProductSkuResp) {}
 }
 
-//商品库存详情 服务 接口
+// ShowDetailSku 复用 ProductDetailReq。这里的 id 表示规格 ID，加购前用它查库存。
 service ShowDetailSku {
-    //rpc 服务
-    rpc ShowDetailSku (ProductDetailReq) returns (ProductSkuResp){}
+    rpc ShowDetailSku (ProductDetailReq) returns (ProductSkuResp) {}
 }
 
-message UpdateSkuReq{
+message UpdateSkuReq {
     ProductSku productSku = 1;
 }
+
 message UpdateSkuResp {
-    bool isSuccess =1;
+    bool isSuccess = 1;
 }
+
 service UpdateSku {
-    rpc UpdateSku (UpdateSkuReq) returns (UpdateSkuResp){}
+    rpc UpdateSku (UpdateSkuReq) returns (UpdateSkuResp) {}
 }
-
-

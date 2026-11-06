@@ -6,9 +6,7 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"strconv"
-	"time"
 
 	common "git.mashibing.com/msb_47094/shopping-comm"
 	consul "github.com/asim/go-micro/plugins/registry/consul/v4"
@@ -24,7 +22,7 @@ import (
 func getClient() proto.LoginService {
 	// micro.Option 是启动选项。切片从空开始，有 Consul 再追加注册中心。
 	opts := []micro.Option{}
-	if consulReachable(common.ConsulReistStr) {
+	if common.ConsulReachable() {
 		opts = append(opts, micro.Registry(consul.NewRegistry(func(options *registry.Options) {
 			options.Addrs = []string{common.ConsulReistStr}
 		})))
@@ -33,16 +31,6 @@ func getClient() proto.LoginService {
 	}
 	rpcServer := micro.NewService(opts...)
 	return proto.NewLoginService("shop-user", rpcServer.Client())
-}
-
-// consulReachable 用 TCP 探一下 8500 端口。1.5 秒连不上就当 Consul 没开。
-func consulReachable(addr string) bool {
-	conn, err := net.DialTimeout("tcp", addr, 1500*time.Millisecond)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-	return true
 }
 
 func main() {

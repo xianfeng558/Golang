@@ -1,7 +1,4 @@
-/**
-* @Auth:ShenZ
-* @Description:
-*/
+// 支付服务用的订单合同，字段和 trade-order 里的同名文件一致。等号后面的编号不要改。
 syntax = "proto3";    // 版本号
 option go_package="./;proto";     //参数1 表示生成到哪个目录 ，参数2 表示生成的文件的package
 package proto ;   //默认在哪个包

@@ -6,9 +6,7 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"strconv"
-	"time"
 
 	common "git.mashibing.com/msb_47094/shopping-comm"
 	consul "github.com/asim/go-micro/plugins/registry/consul/v4"
@@ -51,7 +49,7 @@ func main() {
 		web.Name("shop-product-client"),
 		web.Handler(router),
 	}
-	if consulReachable(common.ConsulReistStr) {
+	if common.ConsulReachable() {
 		reg := consul.NewRegistry(func(options *registry.Options) {
 			options.Addrs = []string{common.ConsulReistStr}
 		})
@@ -129,15 +127,4 @@ func main() {
 	// Run 会堵住当前协程，直到进程退出。写在它后面的代码不会执行。
 	service := web.NewService(webOpts...)
 	service.Run()
-}
-
-// consulReachable 在 1.5 秒内连接注册中心。连上说明 Consul 开着，连不上就改用 mDNS。
-// DialTimeout 的返回值 conn 是一条 TCP 连接，探测完必须 Close，否则会占着端口。
-func consulReachable(addr string) bool {
-	conn, err := net.DialTimeout("tcp", addr, 1500*time.Millisecond)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-	return true
 }

@@ -166,14 +166,6 @@ func SetUserToken(red *redis.Client, key string, val []byte, timeTTL time.Durati
 	red.Set(context.Background(), key, val, timeTTL)
 }
 
-// SetOrderToken 和 SetUserToken 一样，只是值用字符串。当前下单流程没有调用它。
-func SetOrderToken(red *redis.Client, key string, val string, timeTTL time.Duration) {
-	if red == nil {
-		return
-	}
-	red.Set(context.Background(), key, val, timeTTL)
-}
-
 // GetUserToken 按键取出令牌。键不存在时 Redis 返回 redis.Nil，这里记一条日志并返回空字符串。
 func GetUserToken(red *redis.Client, key string) string {
 	if red == nil {

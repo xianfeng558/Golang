@@ -9,7 +9,6 @@ import (
 	"gouser/domain/model"
 	"gouser/domain/service"
 	"gouser/proto"
-	"log"
 	"strconv"
 	"time"
 )
@@ -27,7 +26,6 @@ func (u *User) Login(ctx context.Context, loginRequest *proto.LoginRequest, logi
 	if err != nil {
 		return err
 	}
-	fmt.Println(">>>>>>>>>>>>> login success :", userInfo)
 	UserForResp(userInfo, loginResp)
 	u.UserDataService.SetUserToken(strconv.Itoa(int(userInfo.ID)), []byte(loginResp.Token), time.Duration(1)*time.Hour)
 	return nil
@@ -39,7 +37,6 @@ func UserForResp(userModel *model.User, resp *proto.LoginResp) *proto.LoginResp 
 	timeStr := fmt.Sprintf("%d", time.Now().Unix())
 	resp.Token = common.Md5Encode(timeStr) //"123456"
 	resp.User = &proto.User{}
-	log.Println(userModel)
 	resp.User.Id = userModel.ID
 	resp.User.Avatar = userModel.Avatar
 	resp.User.ClientId = userModel.ClientId
@@ -66,7 +63,6 @@ func (u *User) GetUserToken(ctx context.Context, req *proto.TokenReq, resp *prot
 		// 续命
 		uuid := common.ToInt(req.Uuid)
 		u.UserDataService.SetUserToken(strconv.Itoa(uuid), []byte(res), time.Duration(1)*time.Hour)
-		fmt.Println(">>>>>>>>>>>>> GetUserToken success :", res)
 	} else {
 		resp.IsLogin = false
 		resp.Token = ""

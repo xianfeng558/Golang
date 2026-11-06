@@ -3,13 +3,13 @@ package handler
 
 import (
 	"context"
-	"fmt"
+
 	common "git.mashibing.com/msb_47094/shopping-comm"
 	"trade-order/domain/service"
 	"trade-order/proto"
 )
 
-// TradeOrderHandler 实现创建订单、改状态、按编号查询。支付回调改的就是这里的状态。
+// TradeOrderHandler 实现创建订单、改状态、按编号查询。
 type TradeOrderHandler struct {
 	TradeOrderService service.ITradeOrderService
 }
@@ -18,39 +18,40 @@ type TradeOrderHandler struct {
 func (u *TradeOrderHandler) AddTradeOrder(ctx context.Context, req *proto.AddTradeOrderReq, resp *proto.AddTradeOrderResp) error {
 	obj, err := u.TradeOrderService.AddTradeOrder(req)
 	if err != nil {
-		println("  AddTradeOrder err :", err)
-	} else {
-		fmt.Println(obj.UpdateTime)
-		fmt.Println(" AddTradeOrder  handler  >>>>>>  ", resp)
+		return err
 	}
-	return err
+	return fillOrder(obj, resp)
 }
 
 // UpdateTradeOrder 只改状态和删除标记。支付成功时支付服务把 OrderStatus 设为 3。
 func (u *TradeOrderHandler) UpdateTradeOrder(ctx context.Context, req *proto.AddTradeOrderReq, resp *proto.AddTradeOrderResp) error {
 	obj, err := u.TradeOrderService.UpdateTradeOrder(req)
 	if err != nil {
-		println("  UpdateTradeOrder err :", err)
-	} else {
-		fmt.Println(obj.UpdateTime)
-		fmt.Println(" UpdateTradeOrder  handler  >>>>>>  ", resp)
+		return err
 	}
-	return err
+	return fillOrder(obj, resp)
 }
 
 // FindOrder 按订单主键或订单号查询，再把表记录转成 proto。
-// SwapToStruct 靠 json 标签对字段。时间类型对不上字符串时，对应字段会是空的。
+// SwapToStruct 靠 json 标签对字段。time.Time 对不上字符串时，对应字段会是空的。
 func (u *TradeOrderHandler) FindOrder(ctx context.Context, req *proto.FindOrderReq, resp *proto.FindOrderResp) error {
 	obj, err := u.TradeOrderService.FindOrder(req)
 	if err != nil {
-		println("  FindTradeOrder err :", err)
-	} else {
-		order := &proto.TradeOrder{}
-		err := common.SwapToStruct(obj, order)
-		if err != nil {
-			fmt.Println("转换失败 ", err)
-		}
-		resp.TradeOrder = order
+		return err
 	}
-	return err
+	order := &proto.TradeOrder{}
+	if err = common.SwapToStruct(obj, order); err != nil {
+		return err
+	}
+	resp.TradeOrder = order
+	return nil
+}
+
+func fillOrder(obj interface{}, resp *proto.AddTradeOrderResp) error {
+	order := &proto.TradeOrder{}
+	if err := common.SwapToStruct(obj, order); err != nil {
+		return err
+	}
+	resp.TradeOrder = order
+	return nil
 }

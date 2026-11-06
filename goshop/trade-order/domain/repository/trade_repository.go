@@ -3,104 +3,75 @@
 package repository
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
+	"errors"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
+
+	common "git.mashibing.com/msb_47094/shopping-comm"
+	"gorm.io/gorm"
 	"trade-order/domain/model"
 	"trade-order/proto"
-
-	"gorm.io/gorm"
 )
 
-/**
- int32 clientId = 1;
-    string phone = 2;
-    int32 systemId = 3;
-    string verificationCode = 4;
-**/
-//接口
+// ITradeRepository 是订单的查询、创建和改状态。
 type ITradeRepository interface {
 	FindOrder(req *proto.FindOrderReq) (*model.TraderOrder, error)
 	AddTradeOrder(req *proto.AddTradeOrderReq) (*model.TraderOrder, error)
 	UpdateTradeOrder(req *proto.AddTradeOrderReq) (*model.TraderOrder, error)
 }
 
-// 创建实例
 func NewTradeRepository(db *gorm.DB) ITradeRepository {
 	return &TradeRepository{mysqlDB: db}
 }
 
-// 数据DB
 type TradeRepository struct {
 	mysqlDB *gorm.DB
 }
 
-func SwapToStruct(req, target interface{}) (err error) {
-	dataByte, err := json.Marshal(req)
-	if err != nil {
-		return
+// AddTradeOrder 先把请求抄成表结构，再补上时间和订单号。类型名 TraderOrder 沿用课程原文。
+func (u *TradeRepository) AddTradeOrder(req *proto.AddTradeOrderReq) (*model.TraderOrder, error) {
+	if req == nil || req.TradeOrder == nil {
+		return nil, errors.New("订单内容为空")
 	}
-	err = json.Unmarshal(dataByte, target)
-	return err
-}
-
-// 新增订单
-func (u *TradeRepository) AddTradeOrder(req *proto.AddTradeOrderReq) (obj *model.TraderOrder, err error) {
 	trade := &model.TraderOrder{}
-	err = SwapToStruct(req.TradeOrder, trade)
-	if err != nil {
-		log.Println("SwapToStruct  err :", err)
+	if err := common.SwapToStruct(req.TradeOrder, trade); err != nil {
+		return nil, err
 	}
-	log.Println("SwapToStruct  trade :", trade)
 	now := time.Now()
-	trade.CreateTime = now //
+	trade.CreateTime = now
 	trade.SubmitTime = now
-	tp, _ := time.ParseDuration("30m")
-	trade.ExpireTime = now.Add(tp) //订单失效时间 30m后
+	trade.ExpireTime = now.Add(30 * time.Minute)
 	trade.OrderNo = getOrderNo(now, trade.UserId)
-
-	tb := u.mysqlDB.Create(&trade)
-	//err = errors.New("400", "测试异常", 400)
-	fmt.Println("repository AddTradeOrder   >>>> ", trade)
-	return trade, tb.Error //err
+	tb := u.mysqlDB.Create(trade)
+	return trade, tb.Error
 }
 
-// 修改订单
-func (u *TradeRepository) UpdateTradeOrder(req *proto.AddTradeOrderReq) (obj *model.TraderOrder, err error) {
-	trade := model.TraderOrder{}
-	trade.ID = req.TradeOrder.ID
-	trade.OrderStatus = req.TradeOrder.OrderStatus
-	trade.IsDeleted = req.TradeOrder.IsDeleted
-	trade.UpdateTime = time.Now() //
-	tb := u.mysqlDB.Model(&model.TraderOrder{}).
-		Where("id = ?", trade.ID).
-		Updates(&trade)
-	//Update("order_status", trade.OrderStatus)
-	//err = errors.New("400", "测试异常", 400)
-	fmt.Println("repository UpdateTradeOrder   >>>> ", trade)
-	return &trade, tb.Error //err
+// UpdateTradeOrder 只更新状态、删除标记和更新时间，避免把没传来的字段写成零值。
+func (u *TradeRepository) UpdateTradeOrder(req *proto.AddTradeOrderReq) (*model.TraderOrder, error) {
+	if req == nil || req.TradeOrder == nil {
+		return nil, errors.New("订单内容为空")
+	}
+	trade := model.TraderOrder{
+		ID:          req.TradeOrder.ID,
+		OrderStatus: req.TradeOrder.OrderStatus,
+		IsDeleted:   req.TradeOrder.IsDeleted,
+		UpdateTime:  time.Now(),
+	}
+	tb := u.mysqlDB.Model(&model.TraderOrder{}).Where("id = ?", trade.ID).Updates(&trade)
+	return &trade, tb.Error
 }
 
-func (u *TradeRepository) FindOrder(req *proto.FindOrderReq) (obj *model.TraderOrder, err error) {
-	id := req.GetId()
-	no := req.GetOrderNo()
-	obj = &model.TraderOrder{}
-	tb := u.mysqlDB.Where("id=? or order_no=?", id, no).Find(obj)
-	fmt.Println("FindTradeOrder>>>>>>> ", obj)
+func (u *TradeRepository) FindOrder(req *proto.FindOrderReq) (*model.TraderOrder, error) {
+	obj := &model.TraderOrder{}
+	tb := u.mysqlDB.Where("id=? or order_no=?", req.GetId(), req.GetOrderNo()).Find(obj)
 	return obj, tb.Error
 }
 
-// 生产 订单号   Y2022 06 27 11 00 53 948 97 103564
-//
-//	年    月 日 时  分 秒 毫秒 ID  随机数
+// getOrderNo 拼出订单号：Y、年月日时分秒毫秒、用户 ID、6 位随机数。
 func getOrderNo(time2 time.Time, userID int32) string {
-	var tradeNo string
 	tempNum := strconv.Itoa(rand.Intn(999999-100000+1) + 100000)
-	tradeNo = "Y" + time2.Format("20060102150405.000") + strconv.Itoa(int(userID)) + tempNum
-	tradeNo = strings.Replace(tradeNo, ".", "", -1)
-	return tradeNo
+	tradeNo := "Y" + time2.Format("20060102150405.000") + strconv.Itoa(int(userID)) + tempNum
+	return strings.ReplaceAll(tradeNo, ".", "")
 }

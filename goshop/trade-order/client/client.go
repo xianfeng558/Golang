@@ -5,7 +5,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	common "git.mashibing.com/msb_47094/shopping-comm"
 	"github.com/afex/hystrix-go/hystrix"
 	consul "github.com/asim/go-micro/plugins/registry/consul/v4"
 	"github.com/dtm-labs/dtm/client/dtmcli"
@@ -15,12 +15,10 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"go-micro.dev/v4/client"
 	"go-micro.dev/v4/web"
-	"strconv"
-	//"goproduct/common"
-	common "git.mashibing.com/msb_47094/shopping-comm"
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"trade-order/proto"
 
 	"github.com/gin-gonic/gin"
@@ -245,8 +243,8 @@ func main() {
 		if err != nil {
 			log.Println("findOrder err :", err)
 			common.RespFail(c.Writer, resp, "查询失败")
+			return
 		}
-		fmt.Println("findOrder:", obj)
 		c.JSON(http.StatusOK, gin.H{"findOrder": "SUCCESS", "Message": obj})
 	})
 
@@ -259,16 +257,14 @@ type clientWrapper struct {
 	client.Client
 }
 
+// Call 给每次 RPC 套上熔断。下游连续失败时快速返回，不再一直等待。
 func (c clientWrapper) Call(ctx context.Context, req client.Request, resp interface{}, opts ...client.CallOption) error {
 	return hystrix.Do(req.Service()+"."+req.Endpoint(), func() error {
-		//正常执行
-		fmt.Println("call success ", req.Service()+"."+req.Endpoint())
 		return c.Client.Call(ctx, req, resp, opts...)
 	}, func(err error) error {
-		fmt.Println("call err :", err)
+		log.Println("hystrix:", req.Service()+"."+req.Endpoint(), err)
 		return err
 	})
-
 }
 
 func NewClientHystrixWrapper() client.Wrapper {

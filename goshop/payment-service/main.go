@@ -1,27 +1,28 @@
 // 支付 HTTP 服务，端口 8086。它不注册自己的 RPC，而是在支付成功后调用 trade-order。
 // 支付宝、PayPal 用的是课程里的沙箱示例密钥，只能走测试环境，不能收真实的钱。
 // 密钥初始化失败时服务仍然会启动，对应的支付接口会返回失败说明。
+// 命令：在 payment-service 目录执行 go run .
 package main
 
 import (
-	"context"
-	"io"
+	"context" // 带超时的上下文。PayPal 换令牌最多等 4 秒
+	"io"      // 读取支付宝通知的请求正文
 	"log"
-	"net/http"
-	"net/url"
-	"os"
-	"os/exec"
+	"net/http" // StatusOK 这些状态码
+	"net/url"  // 解析支付宝发来的表单，以及给回跳地址做转义
+	"os"       // PayPal 日志写到标准输出
+	"os/exec"  // 调用 Windows 的 cmd 打开浏览器
 	"strings"
 	"time"
 
 	common "git.mashibing.com/msb_47094/shopping-comm"
 	"github.com/asim/go-micro/plugins/registry/consul/v4"
-	"github.com/gin-gonic/gin"
-	"github.com/plutov/paypal/v4"
-	"github.com/smartwalle/alipay/v3"
+	"github.com/gin-gonic/gin"        // HTTP 路由。这个服务没有单独的 client 目录
+	"github.com/plutov/paypal/v4"     // PayPal 沙箱客户端
+	"github.com/smartwalle/alipay/v3" // 支付宝沙箱客户端
 	"go-micro.dev/v4"
 	"go-micro.dev/v4/registry"
-	"payment/proto"
+	"payment/proto" // 这里只有订单服务的客户端，支付自己不提供 RPC
 )
 
 const (
@@ -35,12 +36,13 @@ const (
 )
 
 var (
-	aliClient          *alipay.Client
-	paypalClient       *paypal.Client
-	findOrderClient    proto.FindOrderService
-	updateTraderClient proto.UpdateTradeOrderService
+	aliClient          *alipay.Client                // 初始化失败时保持 nil，接口里会先判断
+	paypalClient       *paypal.Client                // 同上
+	findOrderClient    proto.FindOrderService        // 按订单号向 trade-order 查询
+	updateTraderClient proto.UpdateTradeOrderService // 把订单状态改成已支付
 )
 
+// init 在 main 之前自动执行。Go 规定一个包可以有多个 init，它们都在 main 之前跑完。
 func init() {
 	setupAlipay()
 	setupPayPal()
@@ -50,6 +52,7 @@ func init() {
 // setupAlipay 用应用私钥签名。第三个参数 false 表示沙箱，不是正式环境。
 // 新版支付宝要求证书，这里沿用课程的公钥字符串；加载失败就跳过，避免进程起不来。
 func setupAlipay() {
+	// recover 接住支付宝库里的宕机。defer 保证函数退出前一定检查一次。
 	defer func() {
 		if r := recover(); r != nil {
 			log.Println("alipay init skipped:", r)
@@ -80,9 +83,10 @@ func setupPayPal() {
 	}
 	client.SetLog(os.Stdout)
 	paypalClient = client
+	// go 开头表示新开一个协程。换令牌和 main 里的监听同时进行。
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		defer cancel()
+		defer cancel() // 用完释放这个超时计时器
 		if _, err := client.GetAccessToken(ctx); err != nil {
 			log.Println("paypal token skipped:", err)
 			return
@@ -101,6 +105,7 @@ func setupTradeClient() {
 	} else {
 		log.Println("consul unreachable, payment discovers trade-order via mdns")
 	}
+	// 这里的 NewService 只当作 RPC 客户端的外壳，不会监听一个新的业务端口。
 	rpcServer := micro.NewService(opts...)
 	findOrderClient = proto.NewFindOrderService("trade-order", rpcServer.Client())
 	updateTraderClient = proto.NewUpdateTradeOrderService("trade-order", rpcServer.Client())
@@ -113,6 +118,7 @@ func openPayURL(raw string) {
 		return
 	}
 	raw = strings.ReplaceAll(raw, "&", "^&")
+	// Start 不等待浏览器关闭。打开失败只打日志，支付链接仍然会写进接口响应。
 	if err := exec.Command("cmd", "/c", "start", raw).Start(); err != nil {
 		log.Println("open browser:", err)
 	}
@@ -127,7 +133,7 @@ func TradeWapAliPay(c *gin.Context) {
 	pay := alipay.TradeWapPay{}
 	pay.TotalAmount = c.Query("payAmount")
 	pay.OutTradeNo = c.Query("orderNo")
-	pay.NotifyURL = "http://127.0.0.1:8086/return"
+	pay.NotifyURL = "http://127.0.0.1:8086/return" // 支付宝付完款后，异步通知打到本服务
 	pay.Body = "APP订单"
 	pay.Subject = "商品标题"
 	res, err := aliClient.TradeWapPay(pay)
@@ -170,6 +176,7 @@ func AliPayNotify(c *gin.Context) {
 		log.Println("read notify body:", err)
 		return
 	}
+	// 正文是 key=value&key=value 这种表单，不是 JSON。
 	values, err := url.ParseQuery(string(data))
 	if err != nil {
 		log.Println("parse notify body:", err)
@@ -181,6 +188,7 @@ func AliPayNotify(c *gin.Context) {
 	}
 	orderNo := values.Get("out_trade_no")
 	log.Println("订单:", orderNo, "成功支付")
+	// context.TODO 表示这次调用没有设置超时。订单服务没启动时，这里会返回找不到服务。
 	obj, err := findOrderClient.FindOrder(context.TODO(), &proto.FindOrderReq{OrderNo: orderNo})
 	if err != nil || obj == nil || obj.TradeOrder == nil {
 		log.Println("findOrder err :", err)
@@ -190,7 +198,7 @@ func AliPayNotify(c *gin.Context) {
 	reqUpdate := &proto.AddTradeOrderReq{
 		TradeOrder: &proto.TradeOrder{
 			ID:          obj.TradeOrder.ID,
-			OrderStatus: 3,
+			OrderStatus: 3, // 3 表示已支付
 		},
 	}
 	if _, err = updateTraderClient.UpdateTradeOrder(context.TODO(), reqUpdate); err != nil {
@@ -207,6 +215,7 @@ func CreateOrderPayer(c *gin.Context) {
 		return
 	}
 	orderNo := c.Query("orderNo")
+	// PurchaseUnitRequest 是 PayPal 要求的一笔收款。金额单位在这个示例里是美元。
 	purchaseUnits := []paypal.PurchaseUnitRequest{{
 		Amount:      &paypal.PurchaseUnitAmount{Currency: "USD", Value: c.Query("amount")},
 		InvoiceID:   orderNo,
@@ -214,9 +223,11 @@ func CreateOrderPayer(c *gin.Context) {
 		Description: "商品支付",
 	}}
 	appContext := &paypal.ApplicationContext{
+		// QueryEscape 把订单号里的特殊字符转成可以放进网址的形式。
 		ReturnURL: "http://127.0.0.1:8086/payPalBack?orderNo=" + url.QueryEscape(orderNo),
 	}
 	orderResponse, err := paypalClient.CreateOrder(context.Background(), "CAPTURE", purchaseUnits, &paypal.CreateOrderPayer{}, appContext)
+	// Links 里通常有多条网址。课程取第 2 条，下标是 1，那是买家打开的收银台。
 	if err != nil || orderResponse == nil || len(orderResponse.Links) < 2 {
 		log.Println("create order errors:", err)
 		c.JSON(http.StatusOK, gin.H{"result": "FAIL", "Message": "构建 PayPal 订单失败"})
@@ -244,6 +255,7 @@ func PaypalCallback(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"result": "FAIL", "Message": "订单回调失败"})
 		return
 	}
+	// 捕获成功后，再用本地订单号去 trade-order 把状态改成 3。
 	if orderNo := c.Query("orderNo"); orderNo != "" && findOrderClient != nil {
 		obj, findErr := findOrderClient.FindOrder(context.TODO(), &proto.FindOrderReq{OrderNo: orderNo})
 		if findErr == nil && obj != nil && obj.TradeOrder != nil {
@@ -255,15 +267,18 @@ func PaypalCallback(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"result": "SUCCESS", "Message": "修改订单支付成功!"})
 }
 
+// main 只做 HTTP 路由。支付宝和 PayPal 的客户端在 init 里已经准备好。
 func main() {
-	r := gin.Default()
+	r := gin.Default() // 自带访问日志和宕机恢复
+	// 只信任本机代理。前面的下划线丢掉设置失败时的错误，学习环境里这个设置不影响支付。
 	_ = r.SetTrustedProxies([]string{common.QSIp})
-	r.GET("/appPay", TradeWapAliPay)
-	r.GET("/pagePay", TradePageAlipay)
-	r.POST("/return", AliPayNotify)
-	r.GET("/payPal", CreateOrderPayer)
-	r.GET("/payPalBack", PaypalCallback)
+	r.GET("/appPay", TradeWapAliPay)     // 手机网站支付
+	r.GET("/pagePay", TradePageAlipay)   // 电脑网站支付
+	r.POST("/return", AliPayNotify)      // 支付宝异步通知
+	r.GET("/payPal", CreateOrderPayer)   // 创建 PayPal 订单
+	r.GET("/payPalBack", PaypalCallback) // PayPal 付完款后回跳
 	log.Println("shop-payment listening :8086")
+	// Run 堵住当前协程，直到进程退出。
 	if err := r.Run(":8086"); err != nil {
 		log.Println("start payment err :", err)
 	}

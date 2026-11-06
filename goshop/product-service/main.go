@@ -10,8 +10,8 @@ import (
 
 	common "git.mashibing.com/msb_47094/shopping-comm"
 	consul "github.com/asim/go-micro/plugins/registry/consul/v4"
-	opentracing2 "github.com/go-micro/plugins/v4/wrapper/trace/opentracing"
-	_ "github.com/go-sql-driver/mysql"
+	opentracing2 "github.com/go-micro/plugins/v4/wrapper/trace/opentracing" // 给每个 RPC 包一层耗时追踪
+	_ "github.com/go-sql-driver/mysql"                                      // 只执行初始化，让 GORM 能连 MySQL
 	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/viper"
 	"go-micro.dev/v4"
@@ -21,22 +21,26 @@ import (
 	"goproduct/domain/service"
 	"goproduct/handler"
 	"goproduct/proto"
-	"gorm.io/gorm"
+	"gorm.io/gorm" // seedProduct 的参数类型。*gorm.DB 是数据库连接
 )
 
+// 编译时把商品库的 JSON 收进程序。改完要重新 go run。
+//
 //go:embed config/mysql-product.json
 var localConfig embed.FS
 
+// main 的顺序：读配置、开追踪、组装 RPC、建库建表、写入示例商品、注册五个商品方法。
 func main() {
 	consulConfig, reg := loadConfig()
+	// UseTracer 连上 Jaeger 时 closer 才有值。defer 等 main 退出时才关闭。
 	if closer := common.UseTracer("shop-product"); closer != nil {
 		defer closer.Close()
 	}
 
 	opts := []micro.Option{
-		micro.RegisterTTL(time.Second * 30),
-		micro.RegisterInterval(time.Second * 30),
-		micro.Name("shop-product"),
+		micro.RegisterTTL(time.Second * 30),      // 注册信息 30 秒过期
+		micro.RegisterInterval(time.Second * 30), // 每 30 秒续一次注册
+		micro.Name("shop-product"),               // 购物车网关按这个名字找商品服务
 		micro.Address(":8082"),
 		micro.Version("v1"),
 		// WrapHandler 像一层洋葱皮：请求先过追踪，再进真正的商品方法。
@@ -54,6 +58,7 @@ func main() {
 	if err != nil {
 		log.Fatal("mysql init err :", err)
 	}
+	// 一次迁移四张表：商品、规格、图文详情、图片。
 	if err := db.AutoMigrate(&model.Product{}, &model.ProductSku{}, &model.ProductDetailRow{}, &model.ProductPicture{}); err != nil {
 		log.Fatal("migrate product table err :", err)
 	}
@@ -61,6 +66,7 @@ func main() {
 
 	productDataService := service.NewProductDataService(repository.NewProductRepository(db))
 	h := &handler.ProductHandler{ProductDataService: productDataService}
+	// 五个 RPC 共用同一个 handler。proto 把它们分成了五个 service。
 	proto.RegisterPageHandler(rpcService.Server(), h)
 	proto.RegisterShowProductDetailHandler(rpcService.Server(), h)
 	proto.RegisterShowProductSkuHandler(rpcService.Server(), h)
@@ -72,11 +78,13 @@ func main() {
 	}
 }
 
+// loadConfig 准备 MySQL 配置和可选的 Consul。第二个返回值可以是 nil。
 func loadConfig() (*viper.Viper, registry.Registry) {
 	if !common.ConsulReachable() {
 		log.Println("consul unreachable, use local config :", common.ConsulReistStr)
 		return mustLocal("config/mysql-product.json"), nil
 	}
+	// ProductFileKey 的值是 "mysql-product"。
 	conf, _ := common.GetConsulConfig(common.ConsulStr, common.ProductFileKey)
 	if conf == nil || conf.GetString("host") == "" {
 		log.Println("consul mysql config empty, use local config")
@@ -88,6 +96,7 @@ func loadConfig() (*viper.Viper, registry.Registry) {
 	return conf, reg
 }
 
+// mustLocal 从编译进程序的文件里读 JSON。读失败就退出进程。
 func mustLocal(name string) *viper.Viper {
 	body, err := localConfig.ReadFile(name)
 	if err != nil {
@@ -102,10 +111,11 @@ func mustLocal(name string) *viper.Viper {
 }
 
 // seedProduct 在空表里放一条商品、一条详情、一张图、一个库存为 100 的规格。
-// 购物车加购时会读这些数据。已经有数据时不会重复插入。
+// 购物车加购时会读这些数据。表里已经有商品时不会再插第二条。
 func seedProduct(db *gorm.DB) {
 	var product model.Product
 	var count int64
+	// Count 把行数写进 count。count 前面的 & 表示把地址交给 GORM，让它填这个变量。
 	db.Model(&model.Product{}).Count(&count)
 	if count == 0 {
 		now := time.Now()
@@ -120,6 +130,7 @@ func seedProduct(db *gorm.DB) {
 			CreateTime:        now,
 			UpdateTime:        now,
 		}
+		// Create 成功后，GORM 会把数据库生成的主键写回 product.ID。
 		if err := db.Create(&product).Error; err != nil {
 			log.Println("seed product err :", err)
 			return
@@ -128,6 +139,7 @@ func seedProduct(db *gorm.DB) {
 		db.Create(&model.ProductPicture{ProductId: product.ID, Picture: product.MainPicture})
 		log.Println("seeded product id", product.ID)
 	} else {
+		// 表里已有商品时，取出第一行，后面用它的 ID 检查详情和图片是否缺失。
 		db.First(&product)
 	}
 	if product.ID != 0 {

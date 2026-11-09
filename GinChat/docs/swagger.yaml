@@ -1,110 +1,419 @@
+basePath: /
+definitions:
+  utils.H:
+    properties:
+      Code:
+        description: 0 成功，-1 失败。页面判断的是这个字段，不看 HTTP 状态码
+        type: integer
+      Data:
+        description: 单条结果。查用户时是用户对象，加好友成功时是数字 0
+      Msg:
+        description: 给人看的一句话，例如「添加好友成功」
+        type: string
+      Rows:
+        description: 列表。好友、群、历史消息都放这里
+      Total:
+        description: 好友列表里是条数，群列表里是「查询成功」，历史消息里是 Rows 的长度
+    type: object
+host: 127.0.0.1:8080
 info:
   contact: {}
+  description: 单机即时聊天。登录、好友、群走 HTTP，消息走 WebSocket。
+  title: GinChat
+  version: "1.0"
 paths:
+  /attach/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: 图片或语音
+        in: formData
+        name: file
+        required: true
+        type: file
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      tags:
+      - 上传
+  /chat:
+    get:
+      parameters:
+      - description: 用户 ID
+        in: query
+        name: userId
+        required: true
+        type: string
+      - description: 登录令牌
+        in: query
+        name: token
+        required: true
+        type: string
+      responses:
+        "101":
+          description: 切换到 WebSocket
+          schema:
+            type: string
+      tags:
+      - 聊天
+  /contact/addfriend:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: 自己的 ID
+        in: formData
+        name: userId
+        required: true
+        type: integer
+      - description: 对方用户名
+        in: formData
+        name: targetName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      summary: 添加好友
+      tags:
+      - 好友和群
+  /contact/createCommunity:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: 群主 ID
+        in: formData
+        name: ownerId
+        required: true
+        type: integer
+      - description: 群名称
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: 头像地址
+        in: formData
+        name: icon
+        type: string
+      - description: 简介
+        in: formData
+        name: desc
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      summary: 创建群
+      tags:
+      - 好友和群
+  /contact/joinGroup:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: 用户 ID
+        in: formData
+        name: userId
+        required: true
+        type: integer
+      - description: 群 ID 或群名称
+        in: formData
+        name: comId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      summary: 加入群
+      tags:
+      - 好友和群
+  /contact/loadcommunity:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: 用户 ID
+        in: formData
+        name: ownerId
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      summary: 群列表
+      tags:
+      - 好友和群
   /index:
     get:
       responses:
         "200":
+          description: 登录页
+          schema:
+            type: string
+      tags:
+      - 首页
+  /searchFriends:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: 用户 ID
+        in: formData
+        name: userId
+        required: true
+        type: integer
+      responses:
+        "200":
           description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      summary: 好友列表
+      tags:
+      - 好友和群
+  /toChat:
+    get:
+      parameters:
+      - description: 用户 ID
+        in: query
+        name: userId
+        required: true
+        type: string
+      - description: 登录返回的 Identity
+        in: query
+        name: token
+        required: true
+        type: string
+      responses:
+        "200":
+          description: 聊天页
+          schema:
+            type: string
+      tags:
+      - 首页
+  /toRegister:
+    get:
+      responses:
+        "200":
+          description: 注册页
           schema:
             type: string
       tags:
       - 首页
   /user/createUser:
-    get:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
       parameters:
       - description: 用户名
-        in: query
+        in: formData
         name: name
+        required: true
         type: string
       - description: 密码
-        in: query
+        in: formData
         name: password
+        required: true
+        type: string
+      - description: 确认密码，注册页使用这个字段
+        in: formData
+        name: Identity
         type: string
       - description: 确认密码
-        in: query
+        in: formData
         name: repassword
         type: string
       responses:
         "200":
-          description: code","message"}
+          description: OK
           schema:
-            type: string
+            additionalProperties: true
+            type: object
       summary: 新增用户
       tags:
       - 用户模块
   /user/deleteUser:
-    get:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
       parameters:
-      - description: id
-        in: query
+      - description: 用户 ID
+        in: formData
         name: id
+        required: true
         type: string
       responses:
         "200":
-          description: code","message"}
+          description: OK
           schema:
-            type: string
+            additionalProperties: true
+            type: object
       summary: 删除用户
       tags:
       - 用户模块
+  /user/find:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: 用户 ID
+        in: formData
+        name: userId
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      summary: 查询用户
+      tags:
+      - 用户模块
   /user/findUserByNameAndPwd:
-    get:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
       parameters:
       - description: 用户名
-        in: query
+        in: formData
         name: name
+        required: true
         type: string
       - description: 密码
-        in: query
+        in: formData
         name: password
+        required: true
         type: string
       responses:
         "200":
-          description: code","message"}
+          description: OK
           schema:
-            type: string
-      summary: 所有用户
+            additionalProperties: true
+            type: object
+      summary: 登录
       tags:
       - 用户模块
   /user/getUserList:
-    get:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
       responses:
         "200":
-          description: code","message"}
+          description: OK
           schema:
-            type: string
+            additionalProperties: true
+            type: object
       summary: 所有用户
       tags:
       - 用户模块
+  /user/redisMsg:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: 其中一个用户
+        in: formData
+        name: userIdA
+        required: true
+        type: integer
+      - description: 另一个用户
+        in: formData
+        name: userIdB
+        required: true
+        type: integer
+      - description: 起始下标
+        in: formData
+        name: start
+        type: integer
+      - description: 结束下标
+        in: formData
+        name: end
+        type: integer
+      - description: true 时从旧到新
+        in: formData
+        name: isRev
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.H'
+      summary: 历史消息
+      tags:
+      - 聊天
+  /user/sendMsg:
+    get:
+      responses:
+        "101":
+          description: 切换到 WebSocket
+          schema:
+            type: string
+      summary: 订阅 Redis 消息
+      tags:
+      - 聊天
+  /user/sendUserMsg:
+    get:
+      parameters:
+      - description: 用户 ID
+        in: query
+        name: userId
+        required: true
+        type: string
+      - description: 登录令牌
+        in: query
+        name: token
+        required: true
+        type: string
+      responses: {}
+      summary: 聊天 WebSocket
+      tags:
+      - 聊天
   /user/updateUser:
     post:
+      consumes:
+      - application/x-www-form-urlencoded
       parameters:
-      - description: id
+      - description: 用户 ID
         in: formData
         name: id
+        required: true
         type: string
-      - description: name
+      - description: 昵称
         in: formData
         name: name
         type: string
-      - description: password
+      - description: 新密码，不填则不改
         in: formData
         name: password
         type: string
-      - description: phone
+      - description: 手机
         in: formData
         name: phone
         type: string
-      - description: email
+      - description: 邮箱
         in: formData
         name: email
         type: string
+      - description: 头像地址
+        in: formData
+        name: icon
+        type: string
       responses:
         "200":
-          description: code","message"}
+          description: OK
           schema:
-            type: string
+            additionalProperties: true
+            type: object
       summary: 修改用户
       tags:
       - 用户模块

@@ -1,4 +1,5 @@
 {{define "/chat/foot.shtml"}}
+<!-- 聊天页脚本：连 WebSocket、发消息、拉历史、加好友、建群。字段名要和 models.Message 对得上。 -->
 <script>
 
     function upload(dom) {
@@ -308,7 +309,8 @@
                 startrecord: function () {
 
                 },
-                //跟谁单聊
+                // 发送一条文字私聊或群聊。
+                // msgcontext 里已经有 userId、TargetId、Type。这里补上 Media=1 和文字内容，再原样 JSON 发给 /chat。
                 sendtxtmsg: function (txt) {
                     if (this.isDisable) {
                         this.setTimeFlag()
@@ -365,8 +367,9 @@
                         if (this.isReadRedisMsg.filter(item => item === user.ID).length <= 0) {
                             post("user/redisMsg", { userIdA: userId(), userIdB: user.ID, start: this.start, end: this.end, isRev: false }, function (res) {
                                 //循环读取的消息记录 并显示
-                                for (var i in res.Total) {
-                                    this.showmsg(user, JSON.parse(res.Total[i]), false, true)
+                                var rows = res.Rows || [];
+                                for (var i in rows) {
+                                    this.showmsg(user, JSON.parse(rows[i]), false, true)
                                 }
                             }.bind(this))
                             this.isReadRedisMsg.push(user.ID)
@@ -398,8 +401,9 @@
                                     this.end = this.end + 2;
                                     post("user/redisMsg", { userIdA: userId(), userIdB: user.ID, start: this.start, end: this.end, isRev: false }, function (res) {
                                         //循环读取的消息记录 并显示
-                                        for (var i in res.Total) {
-                                            this.showmsg(user, JSON.parse(res.Total[i]), true)
+                                        var rows = res.Rows || [];
+                                        for (var i in rows) {
+                                            this.showmsg(user, JSON.parse(rows[i]), true)
                                         }
                                         setTimeout(() => {
                                             this.isLoadMore = false;
@@ -456,6 +460,8 @@
                     }.bind(this))
 
                 },
+                // 连接聊天服务。userId 和 token 都来自登录后的地址栏，token 就是 data.Identity。
+                // 收到带右花括号的文本就当成聊天 JSON；心跳回包不是 JSON，只打在控制台。
                 initwebsocket: function () {
                     var url = "ws://" + location.host + "/chat?userId=" + userId() + "&token=" + util.parseQuery("token");
                     this.webSocket = new WebSocket(url);
@@ -575,11 +581,9 @@
                         userInfo.Avatar = this.info.icon;
                         userInfo.Name = this.info.name;
                         sessionStorage.setItem('userinfo', JSON.stringify(userInfo))
-                        if (res.Code != 0) {
+                        if (res.code != 0) {
                             mui.toast(res.message)
                         } else {
-                            //location.replace("localhost:8081")
-                            //location.href = "/"
                             mui.toast("修改成功")
                             //goBack()
                         }
@@ -636,6 +640,8 @@
                         this.isDisable = true;
                     }, 100)
                 },
+                // 每 10 秒发一次心跳。Type=3 时服务端只续期，不投递、不进历史记录。
+                // readyState 为 1 表示连接还开着。
                 heartbeat() {
                     if (this.webSocket.readyState == 1) {  //失去连接 3
                         var msg = this.createmsgcontext();

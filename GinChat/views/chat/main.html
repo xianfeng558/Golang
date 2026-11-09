@@ -1,4 +1,5 @@
 {{define "/chat/main.shtml"}}
+<!-- 会话窗口。单聊和群聊共用这一块，win 为 single 或 group 时显示。消息列表由 foot.html 里的脚本填充。 -->
 <div v-show="win == 'single' || win == 'group'">
     <header class="mui-bar mui-bar-nav">
         <a class="mui-icon mui-icon-left-nav mui-pull-left" @tap="win='main'"></a>

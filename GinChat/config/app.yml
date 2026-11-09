@@ -1,23 +1,27 @@
+# 进程启动时读这一份。改完必须重新 go run，工作目录要在 GinChat 根目录。
 mysql:
-  dns: root:1234@tcp(192.168.137.131:3308)/ginchat?charset=utf8mb4&parseTime=True&loc=Local
+  host: 127.0.0.1      # MySQL 地址
+  port: 3306           # MySQL 端口
+  user: root           # 账号
+  pwd: root            # 密码
+  database: ginchat    # 库名。不存在时启动过程会创建
 redis:
-  addr: "192.168.137.131:6379"
-  password: ""
-  DB: 0
-  poolSize: 30
-  minIdleConn: 30
+  addr: "127.0.0.1:6379" # host:port。在线标记和私聊记录都在这里
+  password: ""           # 空字符串表示没有密码
+  DB: 0                  # 使用 0 号逻辑库
+  poolSize: 10           # 连接池最多多少条
+  minIdleConn: 2         # 池里至少留着的空闲连接
 oss:
-  Endpoint: "oss-cn-hangzhou.aliyuncs.com"
-  AccessKeyId: "LTAI5tNCXPJwS3MstKoKgixh"
-  AccessKeySecret: "YhHE8OyCMsqfjwOnxQ1oO7paYlDjVHX"
-  Bucket : "ginchat"
-
+  # 默认上传走本机 asset/upload。要改走阿里云时再填，并在 service/attach.go 里调用 UploadOSS。
+  Endpoint: ""
+  AccessKeyId: ""
+  AccessKeySecret: ""
+  Bucket: ""
 timeout:
-  DelayHeartbeat: 3   #延迟心跳时间  单位秒
-  HeartbeatHz: 30   #每隔多少秒心跳时间   
-  HeartbeatMaxTime: 30000  #最大心跳时间  ，超过此就下线 
-  RedisOnlineTime: 4  #缓存的在线用户时长   单位H
-
+  DelayHeartbeat: 3    # 进程起来后，过几秒开始第一次清理
+  HeartbeatHz: 30      # 之后每隔多少秒再清理一次
+  HeartbeatMaxTime: 60 # 多少秒没收到心跳就关掉这条 WebSocket。单位是秒，和 Unix 时间戳直接相加
+  RedisOnlineTime: 4   # 在线标记在 Redis 里放几小时。心跳时会续期
 port:
-  server: ":8082"
-  udp: 3001
+  server: ":8080" # 本仓库里 8082 已被 goshop 的商品 RPC 占用
+  udp: 3001       # 局域网广播。绑不上也不影响本机聊天

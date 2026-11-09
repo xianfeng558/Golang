@@ -1,9 +1,217 @@
 {
     "swagger": "2.0",
     "info": {
-        "contact": {}
+        "description": "单机即时聊天。登录、好友、群走 HTTP，消息走 WebSocket。",
+        "title": "GinChat",
+        "contact": {},
+        "version": "1.0"
     },
+    "host": "127.0.0.1:8080",
+    "basePath": "/",
     "paths": {
+        "/attach/upload": {
+            "post": {
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "tags": [
+                    "上传"
+                ],
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "图片或语音",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
+                        }
+                    }
+                }
+            }
+        },
+        "/chat": {
+            "get": {
+                "tags": [
+                    "聊天"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户 ID",
+                        "name": "userId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "登录令牌",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "切换到 WebSocket",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/contact/addfriend": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "好友和群"
+                ],
+                "summary": "添加好友",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "自己的 ID",
+                        "name": "userId",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "对方用户名",
+                        "name": "targetName",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
+                        }
+                    }
+                }
+            }
+        },
+        "/contact/createCommunity": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "好友和群"
+                ],
+                "summary": "创建群",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "群主 ID",
+                        "name": "ownerId",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "群名称",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "头像地址",
+                        "name": "icon",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "简介",
+                        "name": "desc",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
+                        }
+                    }
+                }
+            }
+        },
+        "/contact/joinGroup": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "好友和群"
+                ],
+                "summary": "加入群",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "userId",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "群 ID 或群名称",
+                        "name": "comId",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
+                        }
+                    }
+                }
+            }
+        },
+        "/contact/loadcommunity": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "好友和群"
+                ],
+                "summary": "群列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "ownerId",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
+                        }
+                    }
+                }
+            }
+        },
         "/index": {
             "get": {
                 "tags": [
@@ -11,7 +219,81 @@
                 ],
                 "responses": {
                     "200": {
+                        "description": "登录页",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/searchFriends": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "好友和群"
+                ],
+                "summary": "好友列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "userId",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
                         "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
+                        }
+                    }
+                }
+            }
+        },
+        "/toChat": {
+            "get": {
+                "tags": [
+                    "首页"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户 ID",
+                        "name": "userId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "登录返回的 Identity",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "聊天页",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/toRegister": {
+            "get": {
+                "tags": [
+                    "首页"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "注册页",
                         "schema": {
                             "type": "string"
                         }
@@ -20,7 +302,10 @@
             }
         },
         "/user/createUser": {
-            "get": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
                 "tags": [
                     "用户模块"
                 ],
@@ -30,33 +315,45 @@
                         "type": "string",
                         "description": "用户名",
                         "name": "name",
-                        "in": "query"
+                        "in": "formData",
+                        "required": true
                     },
                     {
                         "type": "string",
                         "description": "密码",
                         "name": "password",
-                        "in": "query"
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "确认密码，注册页使用这个字段",
+                        "name": "Identity",
+                        "in": "formData"
                     },
                     {
                         "type": "string",
                         "description": "确认密码",
                         "name": "repassword",
-                        "in": "query"
+                        "in": "formData"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "code\",\"message\"}",
+                        "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
             }
         },
         "/user/deleteUser": {
-            "get": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
                 "tags": [
                     "用户模块"
                 ],
@@ -64,60 +361,169 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "id",
+                        "description": "用户 ID",
                         "name": "id",
-                        "in": "query"
+                        "in": "formData",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "code\",\"message\"}",
+                        "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/find": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "查询用户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "userId",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
                         }
                     }
                 }
             }
         },
         "/user/findUserByNameAndPwd": {
-            "get": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
                 "tags": [
                     "用户模块"
                 ],
-                "summary": "所有用户",
+                "summary": "登录",
                 "parameters": [
                     {
                         "type": "string",
                         "description": "用户名",
                         "name": "name",
-                        "in": "query"
+                        "in": "formData",
+                        "required": true
                     },
                     {
                         "type": "string",
                         "description": "密码",
                         "name": "password",
-                        "in": "query"
+                        "in": "formData",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "code\",\"message\"}",
+                        "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
             }
         },
         "/user/getUserList": {
-            "get": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
                 "tags": [
                     "用户模块"
                 ],
                 "summary": "所有用户",
                 "responses": {
                     "200": {
-                        "description": "code\",\"message\"}",
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/redisMsg": {
+            "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "聊天"
+                ],
+                "summary": "历史消息",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "其中一个用户",
+                        "name": "userIdA",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "另一个用户",
+                        "name": "userIdB",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "起始下标",
+                        "name": "start",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "结束下标",
+                        "name": "end",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "true 时从旧到新",
+                        "name": "isRev",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.H"
+                        }
+                    }
+                }
+            }
+        },
+        "/user/sendMsg": {
+            "get": {
+                "tags": [
+                    "聊天"
+                ],
+                "summary": "订阅 Redis 消息",
+                "responses": {
+                    "101": {
+                        "description": "切换到 WebSocket",
                         "schema": {
                             "type": "string"
                         }
@@ -125,8 +531,36 @@
                 }
             }
         },
+        "/user/sendUserMsg": {
+            "get": {
+                "tags": [
+                    "聊天"
+                ],
+                "summary": "聊天 WebSocket",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户 ID",
+                        "name": "userId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "登录令牌",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/user/updateUser": {
             "post": {
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
                 "tags": [
                     "用户模块"
                 ],
@@ -134,42 +568,74 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "id",
+                        "description": "用户 ID",
                         "name": "id",
-                        "in": "formData"
+                        "in": "formData",
+                        "required": true
                     },
                     {
                         "type": "string",
-                        "description": "name",
+                        "description": "昵称",
                         "name": "name",
                         "in": "formData"
                     },
                     {
                         "type": "string",
-                        "description": "password",
+                        "description": "新密码，不填则不改",
                         "name": "password",
                         "in": "formData"
                     },
                     {
                         "type": "string",
-                        "description": "phone",
+                        "description": "手机",
                         "name": "phone",
                         "in": "formData"
                     },
                     {
                         "type": "string",
-                        "description": "email",
+                        "description": "邮箱",
                         "name": "email",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "头像地址",
+                        "name": "icon",
                         "in": "formData"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "code\",\"message\"}",
+                        "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "utils.H": {
+            "type": "object",
+            "properties": {
+                "Code": {
+                    "description": "0 成功，-1 失败。页面判断的是这个字段，不看 HTTP 状态码",
+                    "type": "integer"
+                },
+                "Data": {
+                    "description": "单条结果。查用户时是用户对象，加好友成功时是数字 0"
+                },
+                "Msg": {
+                    "description": "给人看的一句话，例如「添加好友成功」",
+                    "type": "string"
+                },
+                "Rows": {
+                    "description": "列表。好友、群、历史消息都放这里"
+                },
+                "Total": {
+                    "description": "好友列表里是条数，群列表里是「查询成功」，历史消息里是 Rows 的长度"
                 }
             }
         }

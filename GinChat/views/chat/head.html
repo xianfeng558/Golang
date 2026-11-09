@@ -1,5 +1,7 @@
 {{define "/chat/head.shtml"}}
+<!-- 公共脚本和样式。userId 把当前用户 ID 放进 sessionStorage，userInfo 存放登录返回的整份用户 JSON。 -->
 <script>
+    // 不传参数时取出已保存的用户 ID；传入数字时写进去。聊天页实际用的是地址栏里的 userId，这个函数给别的旧页面留着。
     function userId(id){
         if(typeof  id =="undefined"){
             var r = sessionStorage.getItem("userid");

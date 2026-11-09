@@ -1,45 +1,18 @@
-# Reference https://github.com/github/gitignore/blob/master/Go.gitignore
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Rules already covered by the repository root .gitignore are omitted.
 
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# Dependency directories (remove the comment below to include it)
-vendor/
-
-# Go workspace file
+# Local Go workspace files inside this project
 go.work
 
-# Compiled Object files, Static and Dynamic libs (Shared Objects)
+# Compiled objects
 *.o
 *.a
-*.so
 
-# OS General
-Thumbs.db
-.DS_Store
-
-# project
+# Project output
 *.cert
-*.key
 *.log
 bin/
+node_modules/
 
-# Develop tools
-.vscode/
-.idea/
-*.swp
-
-# vols
+# Local data volumes
 /data/
 /volumes/
-
-node_modules/

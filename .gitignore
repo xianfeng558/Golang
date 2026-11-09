@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+GinChat/main
 
 # Test and coverage output
 *.test

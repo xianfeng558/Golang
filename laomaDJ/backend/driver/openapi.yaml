@@ -1,0 +1,243 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/cmd/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: Driver API
+    version: 0.0.1
+paths:
+    /driver/get-verify-code/{telephone}:
+        get:
+            tags:
+                - Driver
+            description: 获取验证码
+            operationId: Driver_GetVerifyCode
+            parameters:
+                - name: telephone
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetVerifyCodeResp'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /driver/idno-check:
+        post:
+            tags:
+                - Driver
+            description: 校验身份证号码
+            operationId: Driver_IDNoCheck
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/IDNoCheckReq'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IDNoCheckResp'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /driver/login:
+        post:
+            tags:
+                - Driver
+            description: 登录
+            operationId: Driver_Login
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LoginReq'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LoginResp'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /driver/logout:
+        delete:
+            tags:
+                - Driver
+            description: 退出
+            operationId: Driver_Logout
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LogoutResp'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /driver/submit-phone:
+        post:
+            tags:
+                - Driver
+            description: 提交电话号码
+            operationId: Driver_SubmitPhone
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SubmitPhoneReq'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SubmitPhoneResp'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+components:
+    schemas:
+        GetVerifyCodeResp:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    format: int64
+                message:
+                    type: string
+                verifyCode:
+                    type: string
+                    description: 验证码
+                verifyCodeTime:
+                    type: integer
+                    description: 生成时间 unix timestamp
+                    format: int64
+                verifyCodeLife:
+                    type: integer
+                    description: 有效期，单位 second
+                    format: int32
+        GoogleProtobufAny:
+            type: object
+            properties:
+                '@type':
+                    type: string
+                    description: The type of the serialized message.
+            additionalProperties: true
+            description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+        IDNoCheckReq:
+            type: object
+            properties:
+                name:
+                    type: string
+                idno:
+                    type: string
+            description: 校验身份证号码消息
+        IDNoCheckResp:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    format: int64
+                message:
+                    type: string
+                status:
+                    type: string
+        LoginReq:
+            type: object
+            properties:
+                telephone:
+                    type: string
+                verifyCode:
+                    type: string
+            description: 登录的消息
+        LoginResp:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    format: int64
+                message:
+                    type: string
+                token:
+                    type: string
+                    description: token,登录表示，特殊的字符串，JWT 编码格式
+                tokenCreateAt:
+                    type: integer
+                    description: 生成时间 unix timestamp
+                    format: int64
+                tokenLife:
+                    type: integer
+                    description: 有效期，单位 second
+                    format: int32
+        LogoutResp:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    format: int64
+                message:
+                    type: string
+        Status:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+                    format: int32
+                message:
+                    type: string
+                    description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+                details:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleProtobufAny'
+                    description: A list of messages that carry the error details.  There is a common set of message types for APIs to use.
+            description: 'The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).'
+        SubmitPhoneReq:
+            type: object
+            properties:
+                telephone:
+                    type: string
+            description: 提交电话号码请求消息
+        SubmitPhoneResp:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    format: int64
+                message:
+                    type: string
+                status:
+                    type: string
+tags:
+    - name: Driver

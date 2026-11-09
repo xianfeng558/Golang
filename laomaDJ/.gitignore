@@ -1,18 +1,45 @@
-# Rules already covered by the repository root .gitignore are omitted.
-
-# Local Go workspace files inside this project
-go.work
-
-# Compiled objects
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.o
 *.a
+
+# Test and coverage output
+*.test
+*.out
+coverage.txt
+
+# Dependency directories
+vendor/
+node_modules/
 
 # Project output
 *.cert
 *.log
 bin/
-node_modules/
-
-# Local data volumes
 /data/
 /volumes/
+
+# A workspace file here would be local only. goshop keeps its own go.work.
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local secrets
+.env
+.env.*
+*.pem
+*.key

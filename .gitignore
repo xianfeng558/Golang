@@ -1,31 +1,11 @@
-# Binaries
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-GinChat/main
-
-# Test and coverage output
-*.test
-*.out
-coverage.txt
-
-# Dependency directories
-vendor/
-
-# IDE
+# Files next to the three projects. Each project has its own .gitignore.
+.DS_Store
+Thumbs.db
+desktop.ini
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Local secrets
 .env
 .env.*
 *.pem

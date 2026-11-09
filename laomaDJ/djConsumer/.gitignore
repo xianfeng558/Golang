@@ -1,5 +1,4 @@
-# Vite build output. Log files, node_modules, and editor directories
-# are already ignored by laomaDJ/.gitignore.
+# Frontend build output. Other rules live in laomaDJ/.gitignore.
 dist
 dist-ssr
 coverage

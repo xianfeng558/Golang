@@ -1,86 +1,95 @@
+// Package data 启动时连接计价库，并写入三行可重复执行的示例规则。
 package data
 
 import (
+	"database/sql"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/go-kratos/kratos/v2/log"
+	mysqldriver "github.com/go-sql-driver/mysql"
+	"github.com/google/wire"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"valuation/internal/biz"
 	"valuation/internal/conf"
-
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/google/wire"
 )
 
-// ProviderSet is data providers.
+// ProviderSet 是 data 层交给 wire 的构造函数。
 var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewPriceRuleInterface)
 
-// Data .
+// Data 持有计价服务的 MySQL。
 type Data struct {
-	// TODO wrapped database client
-	// 操作MySQL的客户端
 	Mdb *gorm.DB
 }
 
-// NewData .
+// NewData 打开 MySQL，建表 price_rules，并写入城市 1 的三段示例规则。
+// 三行的主键固定是 1、2、3。每次启动用 OnConflict 按主键覆盖，所以改了示例数字后重新运行就会生效，不会越插越多。
+// 金额单位是分。7 点到 23 点前起步 300，23 点到 24 点前起步 350，0 点到 7 点前起步 400。里程费和时长费都是 35 和 10。
 func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
-	data := &Data{}
-	// 初始Mdb
-	// 连接mysql，使用配置
-	dsn := c.Database.Source
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	db, err := openMySQL(c.GetDatabase().GetSource())
 	if err != nil {
-		data.Mdb = nil
-		log.Fatal(err)
+		return nil, nil, err
 	}
-	data.Mdb = db
-	// 三，开发阶段，自动迁移表。发布阶段，表结构稳定，不需要migrate.
-	migrateTable(db)
-
+	if err := db.AutoMigrate(&biz.PriceRule{}); err != nil {
+		return nil, nil, fmt.Errorf("migrate price_rule: %w", err)
+	}
+	rules := []biz.PriceRule{
+		{Model: gorm.Model{ID: 1}, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 300, DistanceFee: 35, DurationFee: 10, StartAt: 7, EndAt: 23}},
+		{Model: gorm.Model{ID: 2}, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 350, DistanceFee: 35, DurationFee: 10, StartAt: 23, EndAt: 24}},
+		{Model: gorm.Model{ID: 3}, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 400, DistanceFee: 35, DurationFee: 10, StartAt: 0, EndAt: 7}},
+	}
+	if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&rules).Error; err != nil {
+		return nil, nil, fmt.Errorf("seed price_rule: %w", err)
+	}
+	sqlDB, _ := db.DB()
 	cleanup := func() {
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
 		log.NewHelper(logger).Info("closing the data resources")
 	}
-	return data, cleanup, nil
+	return &Data{Mdb: db}, cleanup, nil
 }
 
-func migrateTable(db *gorm.DB) {
-	if err := db.AutoMigrate(&biz.PriceRule{}); err != nil {
-		log.Info("price_rule table migrate error, err:", err)
+// openMySQL 先建库 laomadj_valuation，再打开它。
+// 连接最多 10 条、空闲 2 条、寿命 30 秒，用来避开本机 MySQL 掐掉空闲连接后出现的 invalid connection。
+func openMySQL(dsn string) (*gorm.DB, error) {
+	if dsn == "" {
+		return nil, fmt.Errorf("mysql dsn is empty")
 	}
-	// 插入一些riceRule的测试数据
-	rules := []biz.PriceRule{
-		{
-			Model: gorm.Model{ID: 1},
-			PriceRuleWork: biz.PriceRuleWork{
-				CityID:      1,
-				StartFee:    300,
-				DistanceFee: 35,
-				DurationFee: 10, // 5m
-				StartAt:     7,
-				EndAt:       23,
-			},
-		},
-		{
-			Model: gorm.Model{ID: 2},
-			PriceRuleWork: biz.PriceRuleWork{
-				CityID:      1,
-				StartFee:    350,
-				DistanceFee: 35,
-				DurationFee: 10, // 5m
-				StartAt:     23,
-				EndAt:       24,
-			},
-		},
-		{
-			Model: gorm.Model{ID: 3},
-			PriceRuleWork: biz.PriceRuleWork{
-				CityID:      1,
-				StartFee:    400,
-				DistanceFee: 35,
-				DurationFee: 10, // 5m
-				StartAt:     0,
-				EndAt:       7,
-			},
-		},
+	cfg, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		return nil, err
 	}
-	db.Clauses(clause.OnConflict{UpdateAll: true}).Create(rules)
+	name := cfg.DBName
+	if name == "" || strings.ContainsAny(name, "`;'\"") {
+		return nil, fmt.Errorf("invalid mysql database name")
+	}
+	cfg.DBName = ""
+	admin, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		return nil, err
+	}
+	defer admin.Close()
+	if err := admin.Ping(); err != nil {
+		return nil, err
+	}
+	if _, err := admin.Exec("CREATE DATABASE IF NOT EXISTS `" + name + "` DEFAULT CHARACTER SET utf8mb4"); err != nil {
+		return nil, err
+	}
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(2)
+	sqlDB.SetConnMaxLifetime(30 * time.Second)
+	return db, nil
 }

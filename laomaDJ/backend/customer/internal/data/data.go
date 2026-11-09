@@ -1,69 +1,117 @@
+// 本文件在进程启动时打开 Redis 1 号库和乘客库，并按 biz.Customer 建表。
+
 package data
 
 import (
+	"context"
 	"customer/internal/biz"
 	"customer/internal/conf"
+	"database/sql"
 	"fmt"
-	"github.com/go-redis/redis/v9"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
+	"strings"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-redis/redis/v9"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/google/wire"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
-// ProviderSet is data providers.
-// 增加 NewCustomerData 的 provider
+// ProviderSet 是 data 层交给 wire 的构造函数。
+// NewGreeterRepo 属于 Kratos 模板，代驾业务不调用它，删掉会导致现有的 wire_gen.go 对不上。
 var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewCustomerData)
 
-// Data .
+// Data 持有乘客服务要用的两个客户端。
+// Rdb 指向 Redis 1 号库，和司机使用的 2 号库分开，避免验证码键混在一起。
+// Mdb 指向库 laomadj_customer。
 type Data struct {
-	// TODO wrapped database client
-
-	// 操作Redis的客户端
 	Rdb *redis.Client
-
-	// 操作MySQL的客户端
 	Mdb *gorm.DB
 }
 
-// NewData .
+// NewData 按配置连接 Redis 和 MySQL。
+// Redis 连的是 c.Redis.Addr 的 1 号库，启动时 Ping 一次，连不上就返回错误，避免服务看起来起来了、登录时才失败。
+// MySQL 会先建库 laomadj_customer，再按 biz.Customer 建表或补列。
+// 返回的 cleanup 在进程退出时关闭两个客户端。
 func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
-	data := &Data{}
-
-	// 一，初始化 Rdb
-	// 连接redis，使用服务的配置，c就是解析之后的配置信息
-	redisURL := fmt.Sprintf("redis://%s/1?dial_timeout=%d", c.Redis.Addr, 1)
-	options, err := redis.ParseURL(redisURL)
-	if err != nil {
-		data.Rdb = nil
-		log.Fatal(err)
+	if c.GetRedis() == nil || c.Redis.GetAddr() == "" {
+		return nil, nil, fmt.Errorf("redis config is empty")
 	}
-	// new client 不会立即连接，建立客户端，需要执行命令时才会连接
-	data.Rdb = redis.NewClient(options)
-
-	// 二，初始Mdb
-	// 连接mysql，使用配置
-	dsn := c.Database.Source
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		data.Mdb = nil
-		log.Fatal(err)
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         c.Redis.Addr,
+		DB:           1,
+		DialTimeout:  time.Second,
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	})
+	pingCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := rdb.Ping(pingCtx).Err(); err != nil {
+		_ = rdb.Close()
+		return nil, nil, fmt.Errorf("redis: %w", err)
 	}
-	data.Mdb = db
-	// 三，开发阶段，自动迁移表。发布阶段，表结构稳定，不需要migrate.
-	migrateTable(db)
 
+	db, err := openMySQL(c.GetDatabase().GetSource())
+	if err != nil {
+		_ = rdb.Close()
+		return nil, nil, err
+	}
+	if err := db.AutoMigrate(&biz.Customer{}); err != nil {
+		_ = rdb.Close()
+		return nil, nil, fmt.Errorf("migrate customer: %w", err)
+	}
+
+	sqlDB, _ := db.DB()
 	cleanup := func() {
-		// 清理了 Redis 连接
-		_ = data.Rdb.Close()
+		_ = rdb.Close()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
 		log.NewHelper(logger).Info("closing the data resources")
 	}
-	return data, cleanup, nil
+	return &Data{Rdb: rdb, Mdb: db}, cleanup, nil
 }
 
-func migrateTable(db *gorm.DB) {
-	if err := db.AutoMigrate(&biz.Customer{}); err != nil {
-		log.Info("customer table migrate error, err:", err)
+// openMySQL 先不带库名连上服务器，执行 CREATE DATABASE IF NOT EXISTS，再打开目标库。
+// 库名来自 DSN，拒绝空名和带引号的名字，避免把配置拼进 SQL 时破坏语句。
+// 连接寿命限制为 30 秒。本机 MySQL 会掐掉空闲连接，下次取连接时会新建，而不是继续用一条已经断开的连接。
+func openMySQL(dsn string) (*gorm.DB, error) {
+	if dsn == "" {
+		return nil, fmt.Errorf("mysql dsn is empty")
 	}
+	cfg, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	name := cfg.DBName
+	if name == "" || strings.ContainsAny(name, "`;'\"") {
+		return nil, fmt.Errorf("invalid mysql database name")
+	}
+	cfg.DBName = ""
+	admin, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		return nil, err
+	}
+	defer admin.Close()
+	if err := admin.Ping(); err != nil {
+		return nil, err
+	}
+	if _, err := admin.Exec("CREATE DATABASE IF NOT EXISTS `" + name + "` DEFAULT CHARACTER SET utf8mb4"); err != nil {
+		return nil, err
+	}
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	// 本机 MySQL 会掐掉空闲连接。限制寿命后，下次查询会新建连接。
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(2)
+	sqlDB.SetConnMaxLifetime(30 * time.Second)
+	return db, nil
 }

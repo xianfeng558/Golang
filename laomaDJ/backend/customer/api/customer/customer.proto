@@ -2,21 +2,26 @@ syntax = "proto3";
 
 package api.customer;
 
-// 导入包
+// 让生成的 HTTP 代码认识 get / post 这些注解。
 import "google/api/annotations.proto";
 
+// 生成代码的 Go 包名是 customer，导入路径是 customer/api/customer。
 option go_package = "customer/api/customer;customer";
 
-
+// Customer 是乘客端能直接调用的接口。
+// 带 google.api.http 的方法同时出现在 HTTP 8100 上。
+// 业务成功或失败都尽量返回 200，用 code 区分：0 成功，1 失败。
+// code、price 这些 int64 经 protojson 编码后会变成字符串。
 service Customer {
-	// 获取验证码
+	// GetVerifyCode 按手机号要一个 6 位数字验证码。
+	// 没有短信，验证码写在响应里。不需要登录。
 	rpc GetVerifyCode (GetVerifyCodeReq) returns (GetVerifyCodeResp) {
 		option (google.api.http) = {
 			get: "/customer/get-verify-code/{telephone}"
 		};
 	}
 
-	// 登录
+	// Login 用手机号和验证码换一张 JWT。手机号不存在时会新建乘客。不需要登录。
 	rpc Login (LoginReq) returns (LoginResp) {
 		option (google.api.http) = {
 			post: "/customer/login",
@@ -24,14 +29,15 @@ service Customer {
 		};
 	}
 
-	// 退出
+	// Logout 作废当前令牌。请求头要带 Authorization: Bearer <token>。
 	rpc Logout (LogoutReq) returns (LogoutResp) {
 		option (google.api.http) = {
 			get: "/customer/logout",
 		};
 	}
 
-	// 价格预估
+	// EstimatePrice 按起点、终点经纬度询价。需要登录。
+	// 路径参数形如 116.304388,39.984405，逗号是经纬度分隔符，不是两个字段。
 	rpc EstimatePrice (EstimatePriceReq) returns (EstimatePriceResp) {
 		option (google.api.http) = {
 			get: "/customer/estimate-price/{origin}/{destination}",
@@ -39,52 +45,55 @@ service Customer {
 	}
 }
 
+// EstimatePriceReq 的两个字符串都是「经度,纬度」。
 message EstimatePriceReq {
-	string origin = 1;
-	string destination = 2;
+	string origin = 1;      // 起点，例如 116.304388,39.984405
+	string destination = 2; // 终点，例如 116.454406,39.934862
 };
+// EstimatePriceResp.price 的单位是分，300 表示 3.00 元。
 message EstimatePriceResp {
-	int64 code = 1;
-	string message = 2;
-	string origin = 3;
-	string destination = 4;
-	int64 price = 5;
+	int64 code = 1;         // 0 成功，1 失败
+	string message = 2;     // 给人看的说明
+	string origin = 3;      // 原样带回起点
+	string destination = 4; // 原样带回终点
+	int64 price = 5;        // 预估费用，单位分
 };
 
+// LogoutReq 没有字段，乘客身份在 JWT 的 jti 里，jti 是乘客表主键。
 message LogoutReq {
 };
 message LogoutResp {
-	int64 code = 1;
+	int64 code = 1;     // 0 成功，1 失败
 	string message = 2;
 };
 
-// 登录的消息
+// LoginReq 是登录正文。JSON 可以用 verifyCode，也可以用 verify_code。
 message LoginReq {
-	string telephone = 1;
-	string verify_code = 2;
+	string telephone = 1;   // 11 位大陆手机号
+	string verify_code = 2; // 60 秒内从获取验证码接口拿到的数字
 };
 message LoginResp {
 	int64 code = 1;
 	string message = 2;
-	// token,登录表示，特殊的字符串，JWT 编码格式
+	// 登录凭证，HS256 JWT。后续请求放在 Authorization: Bearer 后面。
 	string token = 3;
-	// 生成时间 unix timestamp
+	// 签发时间，Unix 秒。
 	int64 token_create_at = 4;
-	// 有效期，单位 second
+	// 有效秒数。乘客是 60 天。真正是否还能用，还要看乘客表里是否仍保存这张令牌。
 	int32 token_life = 5;
 }
 
-// 获取验证码的消息
+// GetVerifyCodeReq 的手机号来自 URL 路径，不是请求体。
 message GetVerifyCodeReq {
 	string telephone = 1;
 };
 message GetVerifyCodeResp {
 	int64 code = 1;
 	string message = 2;
-	// 验证码
+	// 本次验证码。学习环境直接返回，没有发给手机。
 	string verify_code = 3;
-	// 生成时间 unix timestamp
+	// 生成时间，Unix 秒。
 	int64 verify_code_time = 4;
-	// 有效期，单位 second
+	// 剩余有效秒数，当前固定 60。过期后 Redis 键消失。
 	int32 verify_code_life = 5;
 };

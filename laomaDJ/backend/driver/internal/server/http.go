@@ -15,7 +15,9 @@ import (
 	jwtv4 "github.com/golang-jwt/jwt/v4"
 )
 
-// NewHTTPServer new a HTTP server.
+// NewHTTPServer 监听司机 HTTP，默认 0.0.0.0:8400。
+// 获取验证码、提交手机号、登录不校验 JWT。退出和身份证校验要带 Bearer 令牌。
+// 不校验的判断用 protobuf 操作名，不用 URL。
 func NewHTTPServer(c *conf.Server, greeter *service.GreeterService, driverService *service.DriverService, logger log.Logger) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(

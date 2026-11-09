@@ -11,7 +11,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/http"
 )
 
-// NewHTTPServer new a HTTP server.
+// NewHTTPServer 监听计价 HTTP，默认 0.0.0.0:8300。
+// 询价不在这个端口。乘客打的是 gRPC 9300。这里只挂了脚手架问候接口，并带上 tracing。
 func NewHTTPServer(c *conf.Server, greeter *service.GreeterService, logger log.Logger) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(

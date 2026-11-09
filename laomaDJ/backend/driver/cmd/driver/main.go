@@ -2,18 +2,18 @@ package main
 
 import (
 	"flag"
-	"github.com/go-kratos/kratos/contrib/registry/consul/v2"
+	"os"
+
 	"github.com/google/uuid"
-	"github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/sdk/resource"
 	traceSDK "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
-	"os"
 
 	"driver/internal/conf"
+	"driver/internal/discover"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -28,11 +28,11 @@ import (
 
 // go build -ldflags "-X main.Version=x.y.z"
 var (
-	// Name is the name of the compiled software.
+	// Name 是注册到 Consul 时的服务名。司机业务目前没有被别的服务按这个名字调用。
 	Name string = "Driver"
-	// Version is the version of the compiled software.
+	// Version 只写在注册信息和日志里。
 	Version string = "1.0.0"
-	// flagconf is the config flag.
+	// flagconf 默认 ../../configs。在 driver 模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
 	//id, _ = os.Hostname()
@@ -44,26 +44,27 @@ func init() {
 }
 
 func newApp(cs *conf.Service, logger log.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
-	// new App 前完成初始化调用
-	reg, err := initServiceRegistry(cs.Consul.Address)
-	if err != nil {
-		panic(err)
-	}
+	helper := log.NewHelper(logger)
 	if err := initTracer(cs.Jaeger.Url); err != nil {
-		panic(err)
+		helper.Errorf("jaeger tracer skipped: %v", err)
 	}
-	return kratos.New(
+	opts := []kratos.Option{
 		kratos.ID(id),
 		kratos.Name(Name),
 		kratos.Version(Version),
 		kratos.Metadata(map[string]string{}),
 		kratos.Logger(logger),
-		kratos.Server(
-			gs,
-			hs,
-		),
-		kratos.Registrar(reg),
-	)
+		kratos.Server(gs, hs),
+	}
+	reg, err := discover.Registrar()
+	if err != nil {
+		helper.Errorf("consul registrar: %v", err)
+	} else if reg != nil {
+		opts = append(opts, kratos.Registrar(reg))
+	} else {
+		helper.Info("consul unreachable, skip register; rpc uses direct address")
+	}
+	return kratos.New(opts...)
 }
 
 func main() {
@@ -105,44 +106,23 @@ func main() {
 	}
 }
 
-// 初始化服务注册
-func initServiceRegistry(address string) (*consul.Registry, error) {
-	// 一，获取consul客户端
-	consulConfig := api.DefaultConfig()
-	consulConfig.Address = address
-	consulClient, err := api.NewClient(consulConfig)
-	if err != nil {
-		return nil, err
-	}
-	// 二，获取consul注册管理器
-	reg := consul.New(consulClient)
-	return reg, nil
-}
-
-// 初始化Tracer
-// @param url string 指定 Jaeger 的API接口
+// initTracer 把请求追踪发到本机 Jaeger。
+// url 是采集器地址。采集器没开时返回错误，司机登录照常工作。
+// AlwaysSample 表示每条请求都采样，只适合本机。
 func initTracer(url string) error {
-	//一，建立jaeger客户端，称之为：exporter，导出器
 	exporter, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(url)))
 	if err != nil {
 		return err
 	}
-	// 创建 TracerProvider
+	// 服务名会写进每条 span，Jaeger 界面上按 Driver 过滤。
 	tracerProvider := traceSDK.NewTracerProvider(
-		//采样设置
 		traceSDK.WithSampler(traceSDK.AlwaysSample()),
-		// 使用 exporter 作为批处理程序
 		traceSDK.WithBatcher(exporter),
-		// 将当前服务的信息，作为资源告知给TracerProvider
 		traceSDK.WithResource(resource.NewSchemaless(
-			// 必要的配置
 			semconv.ServiceNameKey.String(Name),
-			// 任意的其他属性配置
 			attribute.String("exporter", "jaeger"),
 		)),
 	)
-
-	// 三，设置全局的TP
 	otel.SetTracerProvider(tracerProvider)
 	return nil
 }

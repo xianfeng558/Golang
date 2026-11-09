@@ -2,12 +2,13 @@ package main
 
 import (
 	"flag"
-	consul "github.com/go-kratos/kratos/contrib/registry/consul/v2"
-	"github.com/google/uuid"
-	"github.com/hashicorp/consul/api"
-	"math/rand"
+	"net"
 	"os"
 	"time"
+
+	consulreg "github.com/go-kratos/kratos/contrib/registry/consul/v2"
+	"github.com/google/uuid"
+	"github.com/hashicorp/consul/api"
 
 	"verifyCode/internal/conf"
 
@@ -22,11 +23,11 @@ import (
 
 // go build -ldflags "-X main.Version=x.y.z"
 var (
-	// Name is the name of the compiled software.
+	// Name 必须是 VerifyCode。乘客和司机按这个名字要验证码，直连时则固定访问 127.0.0.1:9000。
 	Name string = "VerifyCode"
-	// Version is the version of the compiled software.
+	// Version 只写在注册信息和日志里。
 	Version string = "1.0.0"
-	// flagconf is the config flag.
+	// flagconf 默认 ../../configs。在 verifyCode 模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
 	//id, _ = os.Hostname()
@@ -39,34 +40,41 @@ func init() {
 }
 
 func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
-	// 一，获取consul客户端
-	consulConfig := api.DefaultConfig()
-	consulConfig.Address = "localhost:8500"
-	consulClient, err := api.NewClient(consulConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// 二，获取consul注册管理器
-	reg := consul.New(consulClient)
-
-	// 设置meta属性，设置weight
-	mate := map[string]string{
-		"weight": "999",
-	}
-	return kratos.New(
+	helper := log.NewHelper(logger)
+	opts := []kratos.Option{
 		kratos.ID(id),
 		kratos.Name(Name),
 		kratos.Version(Version),
-		// 设置元数据
-		kratos.Metadata(mate),
+		kratos.Metadata(map[string]string{"weight": "999"}),
 		kratos.Logger(logger),
-		kratos.Server(
-			gs,
-			hs,
-		),
-		// 三，创建服务时，指定服务器注册
-		kratos.Registrar(reg),
-	)
+		kratos.Server(gs, hs),
+	}
+	reg, err := consulRegistrar()
+	if err != nil {
+		helper.Errorf("consul registrar: %v", err)
+	} else if reg != nil {
+		opts = append(opts, kratos.Registrar(reg))
+	} else {
+		helper.Info("consul unreachable, skip register")
+	}
+	return kratos.New(opts...)
+}
+
+// consulRegistrar 用 400 毫秒探测 127.0.0.1:8500。没开就返回 nil, nil，验证码服务照常监听 9000。
+// Metadata 里的 weight 999 只在 Consul 开着、并且有多份实例时参与加权，单机直连用不到。
+func consulRegistrar() (*consulreg.Registry, error) {
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:8500", 400*time.Millisecond)
+	if err != nil {
+		return nil, nil
+	}
+	_ = conn.Close()
+	cfg := api.DefaultConfig()
+	cfg.Address = "127.0.0.1:8500"
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return consulreg.New(client), nil
 }
 
 func main() {
@@ -102,10 +110,6 @@ func main() {
 	}
 	defer cleanup()
 
-	// set rand seed
-	rand.Seed(time.Now().UnixNano())
-
-	// start and wait for stop signal
 	if err := app.Run(); err != nil {
 		panic(err)
 	}

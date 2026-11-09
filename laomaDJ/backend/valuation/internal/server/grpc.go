@@ -12,7 +12,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 )
 
-// NewGRPCServer new a gRPC server.
+// NewGRPCServer 监听计价 gRPC，默认 0.0.0.0:9300。乘客询价打的就是这个端口。
+// tracing.Server 给每次调用建 span。Jaeger 没开时 span 发不出去，接口结果不受影响。
 func NewGRPCServer(c *conf.Server, greeter *service.GreeterService,
 	valuationService *service.ValuationService,
 	logger log.Logger) *grpc.Server {

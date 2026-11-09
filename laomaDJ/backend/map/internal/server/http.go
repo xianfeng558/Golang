@@ -10,7 +10,7 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/http"
 )
 
-// NewHTTPServer new a HTTP server.
+// NewHTTPServer 监听地图 HTTP，默认 0.0.0.0:8200。上面只有脚手架的问候接口。
 func NewHTTPServer(c *conf.Server, greeter *service.GreeterService, logger log.Logger) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(

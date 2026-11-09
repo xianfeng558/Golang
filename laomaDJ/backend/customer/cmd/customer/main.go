@@ -2,18 +2,18 @@ package main
 
 import (
 	"flag"
-	"github.com/go-kratos/kratos/contrib/registry/consul/v2"
+	"os"
+
 	"github.com/google/uuid"
-	"github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/sdk/resource"
 	traceSDK "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
-	"os"
 
 	"customer/internal/conf"
+	"customer/internal/discover"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -26,11 +26,13 @@ import (
 
 // go build -ldflags "-X main.Version=x.y.z"
 var (
-	// Name is the name of the compiled software.
+	// Name 是注册到 Consul 时的服务名，也是别的进程用 discovery:///Customer 查找时的名字。
+	// 改名后，乘客自己能起来，但已经写死 Customer 的调用方会找不到它。
 	Name string = "Customer"
-	// Version is the version of the compiled software.
+	// Version 只写在注册信息和日志里，不参与接口兼容判断。
 	Version string = "1.0.0"
-	// flagconf is the config flag.
+	// flagconf 是配置目录。默认 ../../configs，只在当前目录是 cmd/customer 时才指到对的地方。
+	// 在模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
 	//id, _ = os.Hostname()
@@ -42,35 +44,29 @@ func init() {
 }
 
 func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
-	// 一，获取consul客户端
-	consulConfig := api.DefaultConfig()
-	consulConfig.Address = "localhost:8500"
-	consulClient, err := api.NewClient(consulConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// 二，获取consul注册管理器
-	reg := consul.New(consulClient)
-
-	// 初始化 TP
-	tracerURL := "http://localhost:14268/api/traces"
-	if err := initTracer(tracerURL); err != nil {
-		log.Error(err)
+	helper := log.NewHelper(logger)
+	// Jaeger 没开时导出会失败，不影响接口。
+	if err := initTracer("http://127.0.0.1:14268/api/traces"); err != nil {
+		helper.Errorf("jaeger tracer skipped: %v", err)
 	}
 
-	return kratos.New(
+	opts := []kratos.Option{
 		kratos.ID(id),
 		kratos.Name(Name),
 		kratos.Version(Version),
 		kratos.Metadata(map[string]string{}),
 		kratos.Logger(logger),
-		kratos.Server(
-			gs,
-			hs,
-		),
-		// 三，创建服务时，指定服务器注册
-		kratos.Registrar(reg),
-	)
+		kratos.Server(gs, hs),
+	}
+	reg, err := discover.Registrar()
+	if err != nil {
+		helper.Errorf("consul registrar: %v", err)
+	} else if reg != nil {
+		opts = append(opts, kratos.Registrar(reg))
+	} else {
+		helper.Info("consul unreachable, skip register; rpc uses direct address")
+	}
+	return kratos.New(opts...)
 }
 
 func main() {
@@ -112,31 +108,27 @@ func main() {
 	}
 }
 
-// 初始化Tracer
-// @param url string 指定 Jaeger 的API接口
-// :14268/api/traces
+// initTracer 把请求追踪发到本机 Jaeger。
+// url 是采集器地址，学习环境写死 http://127.0.0.1:14268/api/traces。
+// Jaeger 没启动时这里返回错误，调用方只记日志，登录和询价照常工作。
+// AlwaysSample 表示每条请求都采样，只适合本机。
 func initTracer(url string) error {
-	//一，建立jaeger客户端，称之为：exporter，导出器
+	// exporter 把 span 批量发给 Jaeger。
 	exporter, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(url)))
 	if err != nil {
 		return err
 	}
-	// 创建 TracerProvider
+	// TracerProvider 决定采样比例、批量发送，以及这条链路属于哪个服务名。
 	tracerProvider := traceSDK.NewTracerProvider(
-		//采样设置
 		traceSDK.WithSampler(traceSDK.AlwaysSample()),
-		// 使用 exporter 作为批处理程序
 		traceSDK.WithBatcher(exporter),
-		// 将当前服务的信息，作为资源告知给TracerProvider
 		traceSDK.WithResource(resource.NewSchemaless(
-			// 必要的配置
 			semconv.ServiceNameKey.String(Name),
-			// 任意的其他属性配置
 			attribute.String("exporter", "jaeger"),
 		)),
 	)
 
-	// 三，设置全局的TP
+	// 设成全局之后，HTTP 上的 tracing 中间件才会把 span 写到这个导出器。
 	otel.SetTracerProvider(tracerProvider)
 
 	return nil

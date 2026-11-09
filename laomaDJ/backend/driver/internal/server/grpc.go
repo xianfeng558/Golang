@@ -11,7 +11,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 )
 
-// NewGRPCServer new a gRPC server.
+// NewGRPCServer 监听司机的 gRPC，默认 0.0.0.0:9400。
+// 同时注册了脚手架 Greeter 和司机业务。页面和 curl 走的是 HTTP 8400，这个端口留给别的进程调用。
 func NewGRPCServer(c *conf.Server, greeter *service.GreeterService,
 	driverService *service.DriverService,
 	logger log.Logger) *grpc.Server {

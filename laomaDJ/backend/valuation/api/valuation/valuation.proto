@@ -2,18 +2,24 @@ syntax = "proto3";
 
 package api.valuation;
 
+// 生成代码的 Go 包名是 valuation。这个服务没有 HTTP 注解，只走 gRPC 9300。
 option go_package = "valuation/api/valuation;valuation";
 
+// Valuation 给乘客服务算一趟代驾的预估费用。
+// 它自己不解析经纬度，先问地图服务要米和秒，再查价格表。
 service Valuation {
+	// GetEstimatePrice 的城市固定为 1，小时用服务器当前时钟。
+	// 返回的 price 单位是分。失败时走 gRPC 错误，不在回复里带 code。
 	rpc GetEstimatePrice (GetEstimatePriceReq) returns (GetEstimatePriceReply);
 }
 
+// GetEstimatePriceReq 的坐标格式和高德一致：经度在前，纬度在后，中间一个英文逗号。
 message GetEstimatePriceReq {
-	string origin = 1;
-	string destination = 2;
+	string origin = 1;      // 起点，经度,纬度
+	string destination = 2; // 终点，经度,纬度
 }
 message GetEstimatePriceReply {
-	string origin = 1;
+	string origin = 1;      // 原样带回，方便调用方对账
 	string destination = 2;
-	int64 price = 3;
+	int64 price = 3;        // 预估费用，单位分。例如 1415 表示 14.15 元
 }

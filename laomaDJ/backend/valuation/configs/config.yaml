@@ -1,18 +1,23 @@
+# 计价服务。在 valuation 目录执行：go run ./cmd/valuation -conf ./configs
 server:
   http:
+    # 8300 只有脚手架问候。询价不走 HTTP。
     addr: 0.0.0.0:8300
-    timeout: 1s
+    timeout: 15s
   grpc:
+    # 乘客服务直连 127.0.0.1:9300 要预估价格。金额单位是分。
     addr: 0.0.0.0:9300
-    timeout: 1s
+    timeout: 15s
 data:
   database:
     driver: mysql
-    source: root:mashibing@tcp(127.0.0.1:3306)/laomadj_valuation?charset=utf8mb4&parseTime=True&loc=Local
+    # 启动时创建 laomadj_valuation，并写入城市 1 的三段时段规则。金额单位是分。
+    source: root:root@tcp(127.0.0.1:3306)/laomadj_valuation?charset=utf8mb4&parseTime=True&loc=Local
   redis:
+    # 计价不读写 Redis。这段是脚手架留下的，进程不会连接它。
     addr: 127.0.0.1:6379
-    read_timeout: 0.2s
-    write_timeout: 0.2s
+    read_timeout: 1s
+    write_timeout: 1s
 service:
   consul:
     address: localhost:8500

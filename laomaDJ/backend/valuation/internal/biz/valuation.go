@@ -1,120 +1,96 @@
+// Package biz 按地图返回的米和秒，以及城市时段规则，算出预估费用。
 package biz
 
 import (
 	"context"
-	"github.com/go-kratos/kratos/contrib/registry/consul/v2"
-	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/hashicorp/consul/api"
-	"gorm.io/gorm"
+	"fmt"
 	"strconv"
+
 	"valuation/api/mapService"
+	"valuation/internal/discover"
+
+	"gorm.io/gorm"
 )
 
+// includedKilometers 是起步价里已经包含的公里数。超出的整公里才乘 DistanceFee。
+const includedKilometers int64 = 5
+
+// PriceRule 对应表 price_rules。费用字段的单位都是分，不是元。
 type PriceRule struct {
 	gorm.Model
 	PriceRuleWork
 }
 
+// PriceRuleWork 是一条城市时段规则。
+// StartAt、EndAt 是小时，区间左闭右开。7 和 23 表示从 7 点到 23 点之前，23 点整不再使用这条规则。
 type PriceRuleWork struct {
-	CityID      uint  `gorm:"" json:"city_id"`
-	StartFee    int64 `gorm:"" json:"start_fee"`
-	DistanceFee int64 `gorm:"" json:"distance_fee"`
-	DurationFee int64 `gorm:"" json:"duration_fee"`
-	StartAt     int   `gorm:"type:int" json:"start_at"` // 0 [0
-	EndAt       int   `gorm:"type:int" json:"end_at"`   // 7 0)
+	CityID      uint  `json:"city_id"`                  // 城市编号。示例数据只有 1
+	StartFee    int64 `json:"start_fee"`                // 起步价，单位分。白天示例是 300，即 3 元
+	DistanceFee int64 `json:"distance_fee"`             // 超出起步里程后，每公里的费用，单位分
+	DurationFee int64 `json:"duration_fee"`             // 每分钟的费用，单位分
+	StartAt     int   `gorm:"type:int" json:"start_at"` // 开始小时，包含
+	EndAt       int   `gorm:"type:int" json:"end_at"`   // 结束小时，不包含
 }
 
-// 定义操作priceRule的接口
+// PriceRuleInterface 按城市和当前小时取出唯一一条规则。查不到时返回错误。
 type PriceRuleInterface interface {
-	// 获取规则
-	GetRule(cityid uint, curr int) (*PriceRule, error)
+	GetRule(cityID uint, hour int) (*PriceRule, error)
 }
 
+// ValuationBiz 先问地图要距离和时长，再按规则算价。
 type ValuationBiz struct {
 	pri PriceRuleInterface
 }
 
+// NewValuationBiz 供 wire 组装。
 func NewValuationBiz(pri PriceRuleInterface) *ValuationBiz {
-	return &ValuationBiz{
-		pri: pri,
-	}
+	return &ValuationBiz{pri: pri}
 }
 
-// 获取价格
-func (vb *ValuationBiz) GetPrice(ctx context.Context, distance, duration string, cityId uint, curr int) (int64, error) {
-	// 一，获取规则
-	rule, err := vb.pri.GetRule(cityId, curr)
+// GetPrice 把高德给的米和秒换成费用。
+// distance、duration 是十进制整数字符串，单位分别是米和秒。cityID 当前由调用方固定传 1。hour 是 0 到 23。
+// 公里和分钟都向下取整，不足 1 公里或 1 分钟的零头不计费。
+// 总里程不到 includedKilometers 时，里程加价按 0，不会因为减法得到负数。
+// 返回值单位是分。解析失败或没有匹配规则时返回错误。
+func (vb *ValuationBiz) GetPrice(ctx context.Context, distance, duration string, cityID uint, hour int) (int64, error) {
+	rule, err := vb.pri.GetRule(cityID, hour)
 	if err != nil {
 		return 0, err
 	}
-	// 二，将距离和时长，转换为int64
-	distancInt64, err := strconv.ParseInt(distance, 10, 64)
+	meters, err := strconv.ParseInt(distance, 10, 64)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("距离不是整数: %w", err)
 	}
-	durationInt64, err := strconv.ParseInt(duration, 10, 64)
+	seconds, err := strconv.ParseInt(duration, 10, 64)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("时长不是整数: %w", err)
 	}
-
-	// 三，基于rule计算
-	distancInt64 /= 1000
-	durationInt64 /= 60
-	var startDistance int64 = 5
-	total := rule.StartFee +
-		rule.DistanceFee*(distancInt64-startDistance) +
-		rule.DurationFee*durationInt64
-
-	return total, nil
+	extraKm := meters/1000 - includedKilometers
+	if extraKm < 0 {
+		extraKm = 0
+	}
+	minutes := seconds / 60
+	return rule.StartFee + rule.DistanceFee*extraKm + rule.DurationFee*minutes, nil
 }
 
-// 获取距离和时长
-func (*ValuationBiz) GetDrivingInfo(ctx context.Context, origin, destination string) (distance string, duration string, err error) {
-	// 一，发出GRPC请求
-	// 使用服务发现
-	// 1.获取consul客户端
-	consulConfig := api.DefaultConfig()
-	consulConfig.Address = "localhost:8500"
-	consulClient, err := api.NewClient(consulConfig)
+// GetDrivingInfo 向地图服务要驾车距离和时长。
+// 返回的两个字符串单位是米和秒，还没有换成公里和分钟。
+// Consul 可用时按名字 Map 发现，否则直连 127.0.0.1:9200。
+// 地图没有返回这两个字段时，不当成 0 公里，而是返回错误，避免用空串算出起步价。
+func (vb *ValuationBiz) GetDrivingInfo(ctx context.Context, origin, destination string) (string, string, error) {
+	conn, err := discover.Default.Conn("Map", "127.0.0.1:9200")
 	if err != nil {
-		return
+		return "", "", err
 	}
-	// 2.获取服务发现管理器
-	dis := consul.New(consulClient)
-
-	// 2.1,连接目标grpc服务器
-	endpoint := "discovery:///Map"
-	conn, err := grpc.DialInsecure(
-		//context.Background(),
-		ctx,
-		grpc.WithEndpoint(endpoint), // 目标服务的名字
-		grpc.WithDiscovery(dis),     // 使用服务发现
-		// 中间件
-		grpc.WithMiddleware(
-			// tracing 的客户端中间件
-			tracing.Client(),
-		),
-	)
-	if err != nil {
-		return
-	}
-	//关闭
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	// 2.2,发送获取驾驶距离和时长请求，RPC调用
-	client := mapService.NewMapServiceClient(conn)
-	reply, err := client.GetDrivingInfo(context.Background(), &mapService.GetDrivingInfoReq{
+	reply, err := mapService.NewMapServiceClient(conn).GetDrivingInfo(ctx, &mapService.GetDrivingInfoReq{
 		Origin:      origin,
 		Destination: destination,
 	})
 	if err != nil {
-		return
+		return "", "", err
 	}
-	distance, duration = reply.Distance, reply.Duration
-
-	// 返回正确信息
-	return
+	if reply.GetDistance() == "" || reply.GetDuration() == "" {
+		return "", "", fmt.Errorf("地图服务没有返回距离或时长")
+	}
+	return reply.Distance, reply.Duration, nil
 }

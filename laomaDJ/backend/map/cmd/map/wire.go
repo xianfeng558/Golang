@@ -1,7 +1,7 @@
 //go:build wireinject
 // +build wireinject
 
-// The build tag makes sure the stub is not built in the final build.
+// wireinject 这个构建标签让本文件只在执行 wire 时编译。日常 go run 用的是已经生成的 wire_gen.go。
 
 package main
 
@@ -17,7 +17,7 @@ import (
 	"github.com/google/wire"
 )
 
-// wireApp init kratos application.
+// wireApp 声明依赖关系。函数体里的 panic 不会在运行时执行，wire 会生成真正的组装代码。
 func wireApp(*conf.Server, *conf.Data, log.Logger) (*kratos.App, func(), error) {
 	panic(wire.Build(server.ProviderSet, data.ProviderSet, biz.ProviderSet, service.ProviderSet, newApp))
 }

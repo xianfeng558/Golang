@@ -11,7 +11,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 )
 
-// NewGRPCServer new a gRPC server.
+// NewGRPCServer 监听验证码 gRPC，默认 0.0.0.0:9000。乘客和司机要码都打这个端口。
+// HTTP 8000 只挂了脚手架 Greeter，生成验证码的接口不在 HTTP 上。
 func NewGRPCServer(c *conf.Server,
 	greeter *service.GreeterService,
 	// 增加需要使用的服务作为参数

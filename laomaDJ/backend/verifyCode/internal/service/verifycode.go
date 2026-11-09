@@ -1,104 +1,74 @@
+// Package service 按长度和类型生成验证码。
+// 本服务不写 Redis，也不校验手机号。乘客、司机拿到码之后各自保存，并在登录时自己比对。
 package service
 
 import (
 	"context"
-	"github.com/go-kratos/kratos/v2/log"
 	"math/rand"
+
 	pb "verifyCode/api/verifyCode"
 )
 
+// VerifyCodeService 生成验证码。它不存码，存到 Redis 是乘客和司机服务的事。
+// 乘客用 Redis 1 号库、键 CVC:；司机用 2 号库、键 DVC:。两边互不影响。
 type VerifyCodeService struct {
 	pb.UnimplementedVerifyCodeServer
 }
 
+// NewVerifyCodeService 供 wire 组装。
 func NewVerifyCodeService() *VerifyCodeService {
 	return &VerifyCodeService{}
 }
 
+// GetVerifyCode 按长度和类型生成一串验证码。
+// Length 小于等于 0 时按 6 位。大于 32 时截成 32，避免一次请求生成过长的随机串。
+// Type 为 1（DIGIT）时是纯数字，乘客和司机目前都请求这一类。0 是 DEFAULT，字符集和数字相同。
 func (s *VerifyCodeService) GetVerifyCode(ctx context.Context, req *pb.GetVerifyCodeRequest) (*pb.GetVerifyCodeReply, error) {
-	log.Info("current verifyCode service Run")
-	return &pb.GetVerifyCodeReply{
-		Code: RandCode(int(req.Length), req.Type),
-	}, nil
-}
-
-// RandCode 开放的被调用的方法，用于区分类型
-func RandCode(l int, t pb.TYPE) string {
-	switch t {
-	case pb.TYPE_DEFAULT:
-		fallthrough
-	case pb.TYPE_DIGIT:
-		//return randCode("0123456789", l)
-		return randCode("0123456789", l, 4)
-	case pb.TYPE_LETTER:
-		//return randCode("abcdefghijklmnopqrstuvwxyz", l)
-		return randCode("abcdefghijklmnopqrstuvwxyz", l, 5)
-	case pb.TYPE_MIXED:
-		//return randCode("0123456789abcdefghijklmnopqrstuvwxyz", l)
-		return randCode("0123456789abcdefghijklmnopqrstuvwxyz", l, 6)
-	default:
-
+	length := int(req.Length)
+	if length <= 0 {
+		length = 6
 	}
-	return ""
+	if length > 32 {
+		length = 32
+	}
+	return &pb.GetVerifyCodeReply{Code: RandCode(length, req.Type)}, nil
 }
 
-// 随机数的核心方法（优化实现）
-// 一次随机多个随机位，分部分多次使用
-func randCode(chars string, l, idxBits int) string {
-	// 计算有效的二进制数位，基于 chars 的长度
-	// 推荐写死，因为chars固定，对应的位数长度也固定
-	//idxBits = len(fmt.Sprintf("%b", len(chars)))
+// RandCode 按类型从对应字符集里取指定长度的随机串。
+// DIGIT 和 DEFAULT 用 0-9。LETTER 用小写字母。MIXED 用数字加小写字母。
+// 未定义的类型返回空串，不猜测成数字，避免调用方把错误类型当成合法验证码。
+func RandCode(length int, kind pb.TYPE) string {
+	switch kind {
+	case pb.TYPE_DEFAULT, pb.TYPE_DIGIT:
+		return randCode("0123456789", length, 4)
+	case pb.TYPE_LETTER:
+		return randCode("abcdefghijklmnopqrstuvwxyz", length, 5)
+	case pb.TYPE_MIXED:
+		return randCode("0123456789abcdefghijklmnopqrstuvwxyz", length, 6)
+	default:
+		return ""
+	}
+}
 
-	// 形成掩码，mask
-	// 例如，使用低六位：00000000000111111
-	idxMask := 1<<idxBits - 1 // 00001000000 - 1 = 00000111111
-	// 63 位可以用多少次
+// randCode 一次取出 63 位随机数，按字符集需要的位数切成多段来用。
+// idxBits 必须盖住字符集下标：10 个数字用 4 位（0–15），26 个字母用 5 位，36 个混合字符用 6 位。
+// 切出来的数如果大于等于字符集长度，就丢掉再取下一段。
+// 这样每个字符被选中的机会相同。如果直接用下标对长度取模，余数较小的字符会被选得更多。
+// math/rand 从 Go 1.20 起自动播种，这里不再调用 rand.Seed。
+func randCode(chars string, length, idxBits int) string {
+	idxMask := int64(1<<idxBits - 1)
 	idxMax := 63 / idxBits
-
-	// 结果
-	result := make([]byte, l)
-
-	// 生成随机字符
-	// cache 随机位缓存
-	// remain 当前还可以用几次
-	for i, cache, remain := 0, rand.Int63(), idxMax; i < l; {
-		// 如果使用的剩余次数为0，则重新获取随机
-		if 0 == remain {
+	result := make([]byte, length)
+	for i, cache, remain := 0, rand.Int63(), idxMax; i < length; {
+		if remain == 0 {
 			cache, remain = rand.Int63(), idxMax
 		}
-
-		// 利用掩码获取有效部位的随机数位
-		// 00110100 10110100 10110100 10110100 10110100 10110100 10110100 10110100
-		// &
-		// 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00111111
-		// =
-		// 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00110100
-		if randIndex := int(cache & int64(idxMask)); randIndex < len(chars) {
-			result[i] = chars[randIndex]
+		if idx := int(cache & idxMask); idx < len(chars) {
+			result[i] = chars[idx]
 			i++
 		}
-
-		// 使用下一组随机位
-		// 00110100 10110100 10110100 10110100 10110100 10110100 10110100 10110100
-		// 000000 00110100 10110100 10110100 10110100 10110100 10110100 10110100 10
 		cache >>= idxBits
-		// 减少一次使用次数
 		remain--
 	}
-
 	return string(result)
 }
-
-// 随机的核心方法(简单的实现)
-//func randCode(chars string, l int) string {
-//	charsLen := len(chars)
-//	// 结果
-//	result := make([]byte, l)
-//	// 根据目标长度，进行循环
-//	for i := 0; i < l; i++ {
-//		// 核心函数 rand.Intn() 生成[0, n)的整型随机数
-//		randIndex := rand.Intn(charsLen)
-//		result[i] = chars[randIndex]
-//	}
-//	return string(result)
-//}

@@ -2,24 +2,31 @@ syntax = "proto3";
 
 package api.verifyCode;
 
+// 生成代码的 Go 包名是 verifyCode。业务只走 gRPC 9000。
+// 这个服务只负责造随机串，不负责按手机号保存。保存是乘客和司机服务的事。
 option go_package = "verifyCode/api/verifyCode;verifyCode";
 
 service VerifyCode {
+	// GetVerifyCode 按长度和字符类型生成一串验证码。
+	// 乘客和司机当前都请求 length=6、type=DIGIT。
 	rpc GetVerifyCode (GetVerifyCodeRequest) returns (GetVerifyCodeReply);
 }
 
+// TYPE 决定从哪组字符里抽。
+// 数值要和生成代码里的常量一致：0 默认、1 数字、2 字母、3 混合。
 enum TYPE {
-	DEFAULT = 0;
-	DIGIT = 1;
-	LETTER = 2;
-	MIXED = 3;
+	DEFAULT = 0; // 与 DIGIT 相同，使用 0 到 9
+	DIGIT = 1;   // 纯数字，登录验证码用这个
+	LETTER = 2;  // 小写字母 a 到 z
+	MIXED = 3;   // 数字加小写字母
 }
-// 接口请求参数结构
+
+// GetVerifyCodeRequest 不包含手机号。调用方拿到码之后自己决定存到哪个键。
 message GetVerifyCodeRequest {
-	uint32 length = 1;
-	TYPE type = 2;
+	uint32 length = 1; // 字符个数。小于等于 0 时服务按 6 处理，大于 32 时截成 32
+	TYPE type = 2;     // 字符集。未识别的枚举值会返回空字符串
 }
-// 接口返回值结构
+
 message GetVerifyCodeReply {
-	string code = 1;
+	string code = 1; // 生成出的验证码。空字符串表示类型无法识别
 }

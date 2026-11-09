@@ -1,13 +1,18 @@
+# 验证码服务。在 verifyCode 目录执行：go run ./cmd/verifyCode -conf ./configs
 server:
   http:
+    # 8000 只有脚手架问候。生成验证码不在 HTTP 上。
     addr: 0.0.0.0:8000
-    timeout: 1s
+    # 生成一串随机数很快，5 秒足够。
+    timeout: 5s
   grpc:
+    # 乘客和司机直连 127.0.0.1:9000。本服务不保存验证码。
     addr: 0.0.0.0:9000
-    timeout: 1s
+    timeout: 5s
 data:
   database:
     driver: mysql
+    # 下面两段不会被读取。码由乘客、司机各自写入 Redis。
     source: root:root@tcp(127.0.0.1:3306)/test
   redis:
     addr: 127.0.0.1:6379

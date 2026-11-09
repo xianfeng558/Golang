@@ -9,7 +9,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 )
 
-// NewGRPCServer new a gRPC server.
+// NewGRPCServer 监听乘客的 gRPC，默认 0.0.0.0:9100。
+// 这里只注册了脚手架的 Greeter。登录、验证码、询价都在 HTTP 8100，不走这个端口。
 func NewGRPCServer(c *conf.Server, greeter *service.GreeterService, logger log.Logger) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(

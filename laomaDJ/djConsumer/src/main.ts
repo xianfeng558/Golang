@@ -23,7 +23,8 @@ app
 .use(Checkbox)
 
 
-// AMap
+// AMap 的 key 是课程里的 JS API key，只负责页面上的地图显示。
+// 它和后端地图服务里的 Web 服务 key 不是同一把。询价不使用这里的地图选点结果。
 import VueAMap, {initAMapApiLoader} from '@vuemap/vue-amap'
 import '@vuemap/vue-amap/dist/style.css'
 initAMapApiLoader({

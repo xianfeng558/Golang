@@ -2,19 +2,24 @@ syntax = "proto3";
 
 package api.mapService;
 
+// 生成代码的 Go 包名是 mapService。业务只走 gRPC 9200，HTTP 8200 是模板接口。
 option go_package = "map/api/mapService;mapService";
 
+// MapService 把高德驾车规划收成距离和时长。
+// 距离、时长用字符串，是为了原样保存高德 JSON 里的数字，避免提前转成整数时丢掉格式。
 service MapService {
+	// GetDrivingInfo 请求高德，取第一条路线。
+	// 失败时返回 gRPC 错误，reason 是 LBS_ERROR，message 里是高德或网络的原因。
 	rpc GetDrivingInfo (GetDrivingInfoReq) returns (GetDrivingReply);
 }
 
 message GetDrivingInfoReq {
-	string origin = 1;
-	string destination = 2;
+	string origin = 1;      // 起点，经度,纬度
+	string destination = 2; // 终点，经度,纬度
 }
 message GetDrivingReply {
 	string origin = 1;
 	string destination = 2;
-	string distance = 3;
-	string duration = 4;
+	string distance = 3; // 米，十进制整数字符串，例如 "22965"
+	string duration = 4; // 秒，十进制整数字符串，例如 "2951"
 }

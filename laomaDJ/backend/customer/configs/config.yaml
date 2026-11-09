@@ -1,15 +1,21 @@
+# 乘客服务。在 customer 目录执行：go run ./cmd/customer -conf ./configs
 server:
   http:
+    # 页面和 curl 打这个端口。登录、验证码、询价都在 HTTP。
     addr: 0.0.0.0:8100
-    timeout: 1s
+    # 一次 HTTP 最长 15 秒。询价要等地图和高德，5 秒容易超时。
+    timeout: 15s
   grpc:
+    # 9100 只挂了脚手架问候接口，代驾业务不走这里。
     addr: 0.0.0.0:9100
-    timeout: 1s
+    timeout: 15s
 data:
   database:
     driver: mysql
-    source: root:mashibing@tcp(127.0.0.1:3306)/laomadj_customer?charset=utf8mb4&parseTime=True&loc=Local
+    # 库不存在时进程会创建 laomadj_customer。账号是本机 root/root。
+    source: root:root@tcp(127.0.0.1:3306)/laomadj_customer?charset=utf8mb4&parseTime=True&loc=Local
   redis:
+    # 验证码写在 1 号库，键是 CVC:<手机号>。库号写在代码里，不在这份配置里。
     addr: 127.0.0.1:6379
-    read_timeout: 0.2s
-    write_timeout: 0.2s
+    read_timeout: 1s
+    write_timeout: 1s

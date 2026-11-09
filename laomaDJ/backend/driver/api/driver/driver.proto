@@ -1,15 +1,18 @@
 syntax = "proto3";
 
 package api.driver;
-// 导入包
+
+// 让生成的 HTTP 代码认识 get / post / delete。
 import "google/api/annotations.proto";
 
-
+// 生成代码的 Go 包名是 driver。
 option go_package = "driver/api/driver;driver";
 
+// Driver 是司机端接口。HTTP 在 8400，同一套方法也挂在 gRPC 9400。
+// code 为 0 表示业务成功，为 1 表示业务失败。int64 在 JSON 里是字符串。
 service Driver {
 
-	// 校验身份证号码
+	// IDNoCheck 预留的身份证核验。当前没有接第三方，调用会得到「尚未实现」。
 	rpc IDNoCheck (IDNoCheckReq) returns (IDNoCheckResp) {
 		option (google.api.http) = {
 			post: "/driver/idno-check",
@@ -17,22 +20,24 @@ service Driver {
 		};
 	}
 
-	// 获取验证码
+	// GetVerifyCode 按手机号要验证码。不需要登录。验证码同时写入 Redis，键是 DVC:<手机号>。
 	rpc GetVerifyCode (GetVerifyCodeReq) returns (GetVerifyCodeResp) {
 		option (google.api.http) = {
 			get: "/driver/get-verify-code/{telephone}"
 		};
 	}
 
-	// 提交电话号码
-	rpc  SubmitPhone (SubmitPhoneReq) returns (SubmitPhoneResp) {
+	// SubmitPhone 登记司机手机号，状态写成 stop（停用，等待审核）。
+	// 同一个手机号可以重复提交，第二次返回已有记录，不会因为唯一索引失败。
+	rpc SubmitPhone (SubmitPhoneReq) returns (SubmitPhoneResp) {
 		option (google.api.http) = {
 			post: "/driver/submit-phone",
 			body: "*",
 		};
 	}
 
-	// 登录
+	// Login 比对验证码并签发 JWT。令牌的 jti 是手机号，不是数字主键。
+	// 还没有司机记录时，登录会先建一条 stop 状态的记录。
 	rpc Login (LoginReq) returns (LoginResp) {
 		option (google.api.http) = {
 			post: "/driver/login",
@@ -40,7 +45,7 @@ service Driver {
 		};
 	}
 
-	// 退出
+	// Logout 按令牌里的手机号清空司机表中的令牌。方法是 DELETE，需要 Bearer 令牌。
 	rpc Logout (LogoutReq) returns (LogoutResp) {
 		option (google.api.http) = {
 			delete: "/driver/logout",
@@ -48,18 +53,18 @@ service Driver {
 	}
 }
 
-// 校验身份证号码消息
+// IDNoCheckReq 是身份证核验的入参。当前服务不使用它们做真实校验。
 message IDNoCheckReq {
-	string name = 1;
-	string idno = 2;
+	string name = 1; // 姓名
+	string idno = 2; // 18 位身份证号
 };
 message IDNoCheckResp {
 	int64 code = 1;
 	string message = 2;
-	string status = 3;
+	string status = 3; // 预留的核验状态，当前为空
 };
 
-// 获取验证码的消息
+// GetVerifyCodeReq 的手机号来自 URL 路径。
 message GetVerifyCodeReq {
 	string telephone = 1;
 };
@@ -67,42 +72,35 @@ message GetVerifyCodeReq {
 message GetVerifyCodeResp {
 	int64 code = 1;
 	string message = 2;
-	// 验证码
-	string verify_code = 3;
-	// 生成时间 unix timestamp
-	int64 verify_code_time = 4;
-	// 有效期，单位 second
-	int32 verify_code_life = 5;
+	string verify_code = 3;      // 6 位数字，同时在响应和 Redis 里
+	int64 verify_code_time = 4;  // 生成时间，Unix 秒
+	int32 verify_code_life = 5;  // 有效秒数，当前是 60
 };
 
-// 提交电话号码请求消息
+// SubmitPhoneReq 只带手机号。姓名、身份证还没有录入接口。
 message SubmitPhoneReq {
 	string telephone = 1;
 };
 message SubmitPhoneResp {
 	int64 code = 1;
 	string message = 2;
-	string status = 3;
+	string status = 3; // 司机状态：out 出车、in 收车、listen 听单、stop 停用
 };
 
-// 登录的消息
 message LoginReq {
 	string telephone = 1;
-	string verify_code = 2;
+	string verify_code = 2; // JSON 字段名 verifyCode 或 verify_code 都可以
 };
 
 message LoginResp {
 	int64 code = 1;
 	string message = 2;
-	// token,登录表示，特殊的字符串，JWT 编码格式
-	string token = 3;
-	// 生成时间 unix timestamp
-	int64 token_create_at = 4;
-	// 有效期，单位 second
-	int32 token_life = 5;
+	string token = 3;          // HS256 JWT，jti 是手机号
+	int64 token_create_at = 4; // 签发时间，Unix 秒
+	int32 token_life = 5;      // 有效秒数，司机是 30 天
 };
 
-
+// LogoutReq 没有正文，身份在 Authorization 头的 JWT 里。
 message LogoutReq {
 };
 message LogoutResp {

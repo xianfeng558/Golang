@@ -1,67 +1,110 @@
+// Package data 连接司机库和 Redis 2 号库。
+// 验证码键是 DVC:<手机号>。令牌写在 drivers.token。没有这行司机时，登录会先建成 stop。
 package data
 
 import (
+	"context"
+	"database/sql"
 	"driver/internal/biz"
 	"driver/internal/conf"
 	"fmt"
-	"github.com/go-redis/redis/v9"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
+	"strings"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-redis/redis/v9"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/google/wire"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
-// ProviderSet is data providers.
+// ProviderSet 是 data 层交给 wire 的构造函数。
 var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewDriverInterface)
 
-// Data .
+// Data 持有司机服务的 MySQL、Redis，以及模板留下的服务配置。
 type Data struct {
-	// TODO wrapped database client
-	// 操作MySQL的客户端
 	Mdb *gorm.DB
-	// 操作Redis的客户端
 	Rdb *redis.Client
-	// 中间件服务器配置
-	cs *conf.Service
+	cs  *conf.Service
 }
 
-// NewData .
+// NewData 连接 Redis（2 号库）和 MySQL，库不存在时创建 laomadj_driver。
 func NewData(c *conf.Data, cs *conf.Service, logger log.Logger) (*Data, func(), error) {
-	data := &Data{
-		cs: cs,
+	if c.GetRedis() == nil || c.Redis.GetAddr() == "" {
+		return nil, nil, fmt.Errorf("redis config is empty")
 	}
-	// 连接redis，使用服务的配置，c就是解析之后的配置信息
-	redisURL := fmt.Sprintf("redis://%s/2?dial_timeout=%d", c.Redis.Addr, 1)
-	options, err := redis.ParseURL(redisURL)
-	if err != nil {
-		data.Rdb = nil
-		log.Fatal(err)
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         c.Redis.Addr,
+		DB:           2,
+		DialTimeout:  time.Second,
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	})
+	pingCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := rdb.Ping(pingCtx).Err(); err != nil {
+		_ = rdb.Close()
+		return nil, nil, fmt.Errorf("redis: %w", err)
 	}
-	// new client 不会立即连接，建立客户端，需要执行命令时才会连接
-	data.Rdb = redis.NewClient(options)
 
-	// 初始Mdb
-	// 连接mysql，使用配置
-	dsn := c.Database.Source
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	db, err := openMySQL(c.GetDatabase().GetSource())
 	if err != nil {
-		data.Mdb = nil
-		log.Fatal(err)
+		_ = rdb.Close()
+		return nil, nil, err
 	}
-	data.Mdb = db
-	// 三，开发阶段，自动迁移表。发布阶段，表结构稳定，不需要migrate.
-	migrateTable(db)
-
+	if err := db.AutoMigrate(&biz.Driver{}); err != nil {
+		_ = rdb.Close()
+		return nil, nil, fmt.Errorf("migrate driver: %w", err)
+	}
+	sqlDB, _ := db.DB()
 	cleanup := func() {
+		_ = rdb.Close()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
 		log.NewHelper(logger).Info("closing the data resources")
 	}
-	return data, cleanup, nil
+	return &Data{Mdb: db, Rdb: rdb, cs: cs}, cleanup, nil
 }
 
-func migrateTable(db *gorm.DB) {
-	// 自动迁移相关表
-	if err := db.AutoMigrate(&biz.Driver{}); err != nil {
-		log.Fatal(err)
+// openMySQL 先不带库名连上服务器，执行 CREATE DATABASE IF NOT EXISTS，再打开 laomadj_driver。
+// 库名来自 DSN。空名或带引号会拒绝，避免把配置拼进 SQL。
+// 最多 10 条连接，空闲 2 条，每条最多用 30 秒。本机 MySQL 会掐掉更老的空闲连接，下次查询会新建。
+func openMySQL(dsn string) (*gorm.DB, error) {
+	if dsn == "" {
+		return nil, fmt.Errorf("mysql dsn is empty")
 	}
+	cfg, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	name := cfg.DBName
+	if name == "" || strings.ContainsAny(name, "`;'\"") {
+		return nil, fmt.Errorf("invalid mysql database name")
+	}
+	cfg.DBName = ""
+	admin, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		return nil, err
+	}
+	defer admin.Close()
+	if err := admin.Ping(); err != nil {
+		return nil, err
+	}
+	if _, err := admin.Exec("CREATE DATABASE IF NOT EXISTS `" + name + "` DEFAULT CHARACTER SET utf8mb4"); err != nil {
+		return nil, err
+	}
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(2)
+	sqlDB.SetConnMaxLifetime(30 * time.Second)
+	return db, nil
 }

@@ -2,10 +2,13 @@ package main
 
 import (
 	"flag"
-	consul "github.com/go-kratos/kratos/contrib/registry/consul/v2"
+	"net"
+	"os"
+	"time"
+
+	consulreg "github.com/go-kratos/kratos/contrib/registry/consul/v2"
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
-	"os"
 
 	"map/internal/conf"
 
@@ -22,11 +25,11 @@ import (
 
 // go build -ldflags "-X main.Version=x.y.z"
 var (
-	// Name is the name of the compiled software.
+	// Name 必须是 Map。计价服务按这个名字发现地图进程，直连时则固定访问 127.0.0.1:9200。
 	Name string = "Map"
-	// Version is the version of the compiled software.
+	// Version 只写在注册信息和日志里。
 	Version string = "1.0.0"
-	// flagconf is the config flag.
+	// flagconf 默认 ../../configs。在 map 模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
 	//id, _ = os.Hostname()
@@ -38,29 +41,42 @@ func init() {
 }
 
 func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
-	// 一，获取consul客户端
-	consulConfig := api.DefaultConfig()
-	consulConfig.Address = "localhost:8500"
-	consulClient, err := api.NewClient(consulConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// 二，获取consul注册管理器
-	reg := consul.New(consulClient)
-
-	return kratos.New(
+	helper := log.NewHelper(logger)
+	opts := []kratos.Option{
 		kratos.ID(id),
 		kratos.Name(Name),
 		kratos.Version(Version),
 		kratos.Metadata(map[string]string{}),
 		kratos.Logger(logger),
-		kratos.Server(
-			gs,
-			hs,
-		),
-		// 三，创建服务时，指定服务器注册
-		kratos.Registrar(reg),
-	)
+		kratos.Server(gs, hs),
+	}
+	reg, err := consulRegistrar()
+	if err != nil {
+		helper.Errorf("consul registrar: %v", err)
+	} else if reg != nil {
+		opts = append(opts, kratos.Registrar(reg))
+	} else {
+		helper.Info("consul unreachable, skip register")
+	}
+	return kratos.New(opts...)
+}
+
+// consulRegistrar 用 400 毫秒探测 127.0.0.1:8500。
+// 端口没有进程时返回 nil, nil。调用方看到 nil 就跳过注册，地图服务仍然监听 9200，计价可以直连。
+// 探测成功但创建客户端失败时返回错误，启动日志会记下来，进程继续跑。
+func consulRegistrar() (*consulreg.Registry, error) {
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:8500", 400*time.Millisecond)
+	if err != nil {
+		return nil, nil
+	}
+	_ = conn.Close()
+	cfg := api.DefaultConfig()
+	cfg.Address = "127.0.0.1:8500"
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return consulreg.New(client), nil
 }
 
 func main() {

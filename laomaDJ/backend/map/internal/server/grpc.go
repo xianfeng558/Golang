@@ -11,7 +11,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 )
 
-// NewGRPCServer new a gRPC server.
+// NewGRPCServer 监听地图 gRPC，默认 0.0.0.0:9200。计价服务按这个地址要驾车距离。
+// HTTP 8200 只挂了脚手架 Greeter，驾车接口不在 HTTP 上。
 func NewGRPCServer(c *conf.Server, greeter *service.GreeterService, mapService *service.MapServiceService, logger log.Logger) *grpc.Server {
 
 	var opts = []grpc.ServerOption{

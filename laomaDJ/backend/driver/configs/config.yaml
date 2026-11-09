@@ -1,20 +1,27 @@
+# 司机服务。在 driver 目录执行：go run ./cmd/driver -conf ./configs
 server:
   http:
+    # 获取验证码、提交手机号、登录、退出都在这个端口。
     addr: 0.0.0.0:8400
-    timeout: 1s
+    timeout: 15s
   grpc:
+    # 9400 同时注册了司机业务和脚手架问候。页面走的是上面的 HTTP。
     addr: 0.0.0.0:9400
-    timeout: 1s
+    timeout: 15s
 data:
   database:
     driver: mysql
-    source: root:mashibing@tcp(127.0.0.1:3306)/laomadj_driver?charset=utf8mb4&parseTime=True&loc=Local
+    # 库不存在时进程会创建 laomadj_driver。司机行的状态新登记时是 stop。
+    source: root:root@tcp(127.0.0.1:3306)/laomadj_driver?charset=utf8mb4&parseTime=True&loc=Local
   redis:
+    # 验证码写在 2 号库，键是 DVC:<手机号>，和乘客的 1 号库分开。
     addr: 127.0.0.1:6379
-    read_timeout: 0.2s
-    write_timeout: 0.2s
+    read_timeout: 1s
+    write_timeout: 1s
 service:
   consul:
+    # 本机没开 8500 时，启动日志会写 skip register，服务仍然监听。
     address: localhost:8500
   jaeger:
+    # 采集器没开时只记一条错误，登录不受影响。
     url: http://localhost:14268/api/traces

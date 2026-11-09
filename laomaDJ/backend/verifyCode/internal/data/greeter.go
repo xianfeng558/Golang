@@ -1,3 +1,5 @@
+// 脚手架的问候存储。Save 原样返回传入的对象，查询都返回空。代驾数据不经过这里。
+
 package data
 
 import (
@@ -13,7 +15,7 @@ type greeterRepo struct {
 	log  *log.Helper
 }
 
-// NewGreeterRepo .
+// NewGreeterRepo 供 wire 组装。它不读写 MySQL。
 func NewGreeterRepo(data *Data, logger log.Logger) biz.GreeterRepo {
 	return &greeterRepo{
 		data: data,

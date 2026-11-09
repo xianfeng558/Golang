@@ -1,13 +1,17 @@
+# 地图服务。在 map 目录执行：go run ./cmd/map -conf ./configs
 server:
   http:
+    # 8200 只有脚手架问候。驾车距离不在 HTTP 上。
     addr: 0.0.0.0:8200
-    timeout: 1s
+    timeout: 15s
   grpc:
+    # 计价服务直连 127.0.0.1:9200。返回的距离单位是米，时长单位是秒。
     addr: 0.0.0.0:9200
-    timeout: 1s
+    timeout: 15s
 data:
   database:
     driver: mysql
+    # 下面两段不会被读取。地图只访问高德 HTTP，不连 MySQL，也不连 Redis。
     source: root:root@tcp(127.0.0.1:3306)/test
   redis:
     addr: 127.0.0.1:6379

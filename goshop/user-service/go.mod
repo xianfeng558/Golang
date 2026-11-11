@@ -24,7 +24,6 @@ require (
 	git.mashibing.com/msb_47094/shopping-comm v0.0.0-20221110051819-6ea24cae9839
 	github.com/asim/go-micro/plugins/registry/consul/v4 v4.7.0
 	github.com/gin-gonic/gin v1.8.1
-	go-micro.dev/v4/cmd v0.0.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/spf13/viper v1.13.0
@@ -131,5 +130,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gorm.io/driver/mysql v1.4.3 // indirect
 )
-
-replace go-micro.dev/v4/cmd => ../compat/microcmd

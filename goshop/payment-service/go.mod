@@ -11,7 +11,6 @@ require (
 require (
 	git.mashibing.com/msb_47094/shopping-comm v0.0.0-20221111074328-ab1a5ce6768e
 	github.com/asim/go-micro/plugins/registry/consul/v4 v4.7.0
-	go-micro.dev/v4/cmd v0.0.0
 	go-micro.dev/v4 v4.2.1
 	google.golang.org/grpc v1.46.2
 	google.golang.org/protobuf v1.28.1
@@ -130,5 +129,3 @@ require (
 	gorm.io/driver/mysql v1.4.3 // indirect
 	gorm.io/gorm v1.24.0 // indirect
 )
-
-replace go-micro.dev/v4/cmd => ../compat/microcmd

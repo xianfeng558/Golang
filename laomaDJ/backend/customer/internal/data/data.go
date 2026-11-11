@@ -58,7 +58,7 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		_ = rdb.Close()
 		return nil, nil, err
 	}
-	if err := db.AutoMigrate(&biz.Customer{}); err != nil {
+	if err := db.AutoMigrate(&biz.Customer{}, &biz.TripOrder{}); err != nil {
 		_ = rdb.Close()
 		return nil, nil, fmt.Errorf("migrate customer: %w", err)
 	}

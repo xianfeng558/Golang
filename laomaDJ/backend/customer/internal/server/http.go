@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"strconv"
 
 	"customer/api/customer"
 	v1 "customer/api/helloworld/v1"
@@ -60,5 +61,54 @@ func NewHTTPServer(c *conf.Server, customerService *service.CustomerService, gre
 	// 注册customer的http服务
 	customer.RegisterCustomerHTTPServer(srv, customerService)
 	v1.RegisterGreeterHTTPServer(srv, greeter)
+	registerTripRoutes(srv, customerService)
 	return srv
+}
+
+type tripBody struct {
+	Origin      string `json:"origin"`
+	Destination string `json:"destination"`
+	Price       int64  `json:"price"`
+	ID          uint   `json:"id"`
+	Status      string `json:"status"`
+}
+
+// registerTripRoutes 挂上叫车接口。它们不在 proto 里，所以在这里手写。
+// 服务器中间件仍会校验 JWT，和询价使用同一张令牌。
+func registerTripRoutes(srv *http.Server, customerService *service.CustomerService) {
+	r := srv.Route("/customer")
+	r.POST("/trips", func(ctx http.Context) error {
+		var body tripBody
+		if err := ctx.Bind(&body); err != nil {
+			return err
+		}
+		reply, err := customerService.CreateTrip(ctx, body.Origin, body.Destination, body.Price)
+		if err != nil {
+			return err
+		}
+		return ctx.JSON(200, reply)
+	})
+	r.GET("/trips", func(ctx http.Context) error {
+		reply, err := customerService.ListTrips(ctx)
+		if err != nil {
+			return err
+		}
+		return ctx.JSON(200, reply)
+	})
+	r.POST("/trips/move", func(ctx http.Context) error {
+		var body tripBody
+		if err := ctx.Bind(&body); err != nil {
+			return err
+		}
+		if body.ID == 0 {
+			if id, err := strconv.ParseUint(ctx.Query().Get("id"), 10, 64); err == nil {
+				body.ID = uint(id)
+			}
+		}
+		reply, err := customerService.MoveTrip(ctx, body.ID, body.Status)
+		if err != nil {
+			return err
+		}
+		return ctx.JSON(200, reply)
+	})
 }

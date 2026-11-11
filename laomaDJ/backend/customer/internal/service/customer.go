@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	pb "customer/api/customer"
@@ -133,3 +134,78 @@ func customerID(ctx context.Context) (string, error) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// TripResult 是手写叫车接口的 JSON。code 为 0 表示成功。
+type TripResult struct {
+	Code        int             `json:"code"`
+	Message     string          `json:"message"`
+	ID          uint            `json:"id,omitempty"`
+	Status      string          `json:"status,omitempty"`
+	Price       int64           `json:"price,omitempty"`
+	Origin      string          `json:"origin,omitempty"`
+	Destination string          `json:"destination,omitempty"`
+	Trips       []biz.TripOrder `json:"trips,omitempty"`
+}
+
+// CreateTrip 在询价之后确认叫车。价格单位是分，必须大于 0。
+// 乘客 ID 来自已经校验过的 JWT。新行程状态是 wait_driver。
+func (s *CustomerService) CreateTrip(ctx context.Context, origin, destination string, price int64) (*TripResult, error) {
+	if origin == "" || destination == "" || price <= 0 {
+		return &TripResult{Code: 1, Message: "起点、终点或价格不正确"}, nil
+	}
+	id, err := customerUint(ctx)
+	if err != nil {
+		return &TripResult{Code: 1, Message: err.Error()}, nil
+	}
+	row, err := s.CD.CreateTrip(id, origin, destination, price)
+	if err != nil {
+		return &TripResult{Code: 1, Message: "创建行程失败"}, nil
+	}
+	return &TripResult{
+		Code:        0,
+		Message:     "SUCCESS",
+		ID:          row.ID,
+		Status:      row.Status,
+		Price:       row.Price,
+		Origin:      row.Origin,
+		Destination: row.Destination,
+	}, nil
+}
+
+// ListTrips 返回当前乘客的行程，新的在前。
+func (s *CustomerService) ListTrips(ctx context.Context) (*TripResult, error) {
+	id, err := customerUint(ctx)
+	if err != nil {
+		return &TripResult{Code: 1, Message: err.Error()}, nil
+	}
+	rows, err := s.CD.ListTrips(id)
+	if err != nil {
+		return &TripResult{Code: 1, Message: "查询行程失败"}, nil
+	}
+	return &TripResult{Code: 0, Message: "SUCCESS", Trips: rows}, nil
+}
+
+// MoveTrip 把行程推进到 to。to 只能是 ongoing、finished、canceled，并且要符合状态机。
+func (s *CustomerService) MoveTrip(ctx context.Context, tripID uint, to string) (*TripResult, error) {
+	id, err := customerUint(ctx)
+	if err != nil {
+		return &TripResult{Code: 1, Message: err.Error()}, nil
+	}
+	row, err := s.CD.TransitTrip(id, tripID, to)
+	if err != nil {
+		return &TripResult{Code: 1, Message: err.Error()}, nil
+	}
+	return &TripResult{Code: 0, Message: "SUCCESS", ID: row.ID, Status: row.Status}, nil
+}
+
+func customerUint(ctx context.Context) (uint, error) {
+	text, err := customerID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.ParseUint(text, 10, 64)
+	if err != nil || n == 0 {
+		return 0, errString("令牌里的乘客 ID 不正确")
+	}
+	return uint(n), nil
+}

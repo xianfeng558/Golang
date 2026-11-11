@@ -5,7 +5,7 @@ package data
 
 import (
 	"context"
-	verifyCode "customer/api/verfiyCode"
+	verifyCode "customer/api/verifyCode"
 	"customer/internal/biz"
 	"customer/internal/discover"
 	"database/sql"

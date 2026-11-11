@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package api.verifyCode;
 
-option go_package = "verifyCode/api/verifyCode;verifyCode";
+option go_package = "customer/api/verifyCode;verifyCode";
 
 service VerifyCode {
 	rpc GetVerifyCode (GetVerifyCodeRequest) returns (GetVerifyCodeReply);

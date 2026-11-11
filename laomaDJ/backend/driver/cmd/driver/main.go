@@ -26,7 +26,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 )
 
-// go build -ldflags "-X main.Version=x.y.z"
+// 编译时可以用 -ldflags "-X main.Version=x.y.z" 改写版本号
 var (
 	// Name 是注册到 Consul 时的服务名。司机业务目前没有被别的服务按这个名字调用。
 	Name string = "Driver"
@@ -35,7 +35,7 @@ var (
 	// flagconf 默认 ../../configs。在 driver 模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
-	//id, _ = os.Hostname()
+	// 原来用主机名当实例编号：id, _ = os.Hostname()
 	id = Name + "-" + uuid.NewString()
 )
 
@@ -100,7 +100,7 @@ func main() {
 	}
 	defer cleanup()
 
-	// start and wait for stop signal
+	// 启动，并一直等到停止信号
 	if err := app.Run(); err != nil {
 		panic(err)
 	}

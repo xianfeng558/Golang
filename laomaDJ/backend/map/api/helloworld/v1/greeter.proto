@@ -9,9 +9,9 @@ option java_multiple_files = true;
 option java_package = "dev.kratos.api.helloworld.v1";
 option java_outer_classname = "HelloworldProtoV1";
 
-// The greeting service definition.
+// 问候服务的定义。这是脚手架示例，不参与代驾。
 service Greeter {
-  // Sends a greeting
+  // 发送一句问候
   rpc SayHello (HelloRequest) returns (HelloReply) {
     option (google.api.http) = {
       get: "/helloworld/{name}"
@@ -19,12 +19,12 @@ service Greeter {
   }
 }
 
-// The request message containing the user's name.
+// 请求消息，里面是用户名。
 message HelloRequest {
   string name = 1;
 }
 
-// The response message containing the greetings
+// 响应消息，里面是问候语
 message HelloReply {
   string message = 1;
 }

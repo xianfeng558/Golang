@@ -21,7 +21,7 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/http"
 )
 
-// go build -ldflags "-X main.Version=x.y.z"
+// 编译时可以用 -ldflags "-X main.Version=x.y.z" 改写版本号
 var (
 	// Name 必须是 VerifyCode。乘客和司机按这个名字要验证码，直连时则固定访问 127.0.0.1:9000。
 	Name string = "VerifyCode"
@@ -30,7 +30,7 @@ var (
 	// flagconf 默认 ../../configs。在 verifyCode 模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
-	//id, _ = os.Hostname()
+	// 原来用主机名当实例编号：id, _ = os.Hostname()
 	// 使用唯一的uuid，作为id
 	id = Name + "-" + uuid.NewString()
 )

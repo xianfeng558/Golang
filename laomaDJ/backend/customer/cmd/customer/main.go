@@ -24,7 +24,7 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/http"
 )
 
-// go build -ldflags "-X main.Version=x.y.z"
+// 编译时可以用 -ldflags "-X main.Version=x.y.z" 改写版本号
 var (
 	// Name 是注册到 Consul 时的服务名，也是别的进程用 discovery:///Customer 查找时的名字。
 	// 改名后，乘客自己能起来，但已经写死 Customer 的调用方会找不到它。
@@ -35,7 +35,7 @@ var (
 	// 在模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
-	//id, _ = os.Hostname()
+	// 原来用主机名当实例编号：id, _ = os.Hostname()
 	id = Name + "-" + uuid.NewString()
 )
 
@@ -102,7 +102,7 @@ func main() {
 	}
 	defer cleanup()
 
-	// start and wait for stop signal
+	// 启动，并一直等到停止信号
 	if err := app.Run(); err != nil {
 		panic(err)
 	}

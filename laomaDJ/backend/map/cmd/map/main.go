@@ -23,7 +23,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 )
 
-// go build -ldflags "-X main.Version=x.y.z"
+// 编译时可以用 -ldflags "-X main.Version=x.y.z" 改写版本号
 var (
 	// Name 必须是 Map。计价服务按这个名字发现地图进程，直连时则固定访问 127.0.0.1:9200。
 	Name string = "Map"
@@ -32,7 +32,7 @@ var (
 	// flagconf 默认 ../../configs。在 map 模块根目录启动时要写成 -conf ./configs。
 	flagconf string
 
-	//id, _ = os.Hostname()
+	// 原来用主机名当实例编号：id, _ = os.Hostname()
 	id = Name + "-" + uuid.NewString()
 )
 
@@ -112,7 +112,7 @@ func main() {
 	}
 	defer cleanup()
 
-	// start and wait for stop signal
+	// 启动，并一直等到停止信号
 	if err := app.Run(); err != nil {
 		panic(err)
 	}

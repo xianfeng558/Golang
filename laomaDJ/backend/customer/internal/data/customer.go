@@ -10,6 +10,7 @@ import (
 	"customer/internal/discover"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -70,6 +71,7 @@ func (cd *CustomerData) GetVerifyCode(ctx context.Context, telephone string) str
 
 // GetCustomerByTelephone 按手机号查乘客。
 // 查到就返回这一行。确认是「没有这条记录」时插入一行，姓名、邮箱、微信保持 NULL，再把带主键的结构体返回。
+// 两个请求同时插入同一个手机号时，唯一索引只接受一行。被拒绝的请求再查一次，返回已经存在的乘客。
 // 其它数据库错误原样返回，不把它当成新用户。
 func (cd *CustomerData) GetCustomerByTelephone(telephone string) (*biz.Customer, error) {
 	customer := &biz.Customer{}
@@ -80,11 +82,24 @@ func (cd *CustomerData) GetCustomerByTelephone(telephone string) (*biz.Customer,
 	if result.Error != nil && errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		customer.Telephone = telephone
 		if err := cd.data.Mdb.Create(customer).Error; err != nil {
+			// 两个登录同时发现没有这行，都会来插入。唯一索引只让一个成功。
+			// 失败的那个再按手机号读一次，拿到已经写进去的乘客，而不是把冲突当成系统错误。
+			if isDuplicate(err) {
+				again := &biz.Customer{}
+				if err = cd.data.Mdb.Where("telephone = ?", telephone).First(again).Error; err != nil {
+					return nil, err
+				}
+				return again, nil
+			}
 			return nil, err
 		}
 		return customer, nil
 	}
 	return nil, result.Error
+}
+
+func isDuplicate(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "Duplicate entry")
 }
 
 // GenerateTokenAndSave 签发乘客 JWT，并把签名结果写回这名乘客。

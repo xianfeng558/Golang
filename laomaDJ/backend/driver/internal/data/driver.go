@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"driver/api/verifyCode"
@@ -96,6 +97,7 @@ func (dt *DriverData) GetToken(ctx context.Context, tel string) (string, error) 
 
 // InitDriverInfo 按手机号查找。找到就返回原行，不改状态。
 // 确认没有记录时插入一行，状态写成 stop，表示已登记但还不能听单。
+// 两次登记同时插入时，唯一索引会拒绝后一次。这时再按手机号把先插入的那一行读出来。
 func (dt *DriverData) InitDriverInfo(ctx context.Context, tel string) (*biz.Driver, error) {
 	driver := biz.Driver{}
 	err := dt.data.Mdb.Where("telephone = ?", tel).First(&driver).Error
@@ -108,6 +110,14 @@ func (dt *DriverData) InitDriverInfo(ctx context.Context, tel string) (*biz.Driv
 	driver.Telephone = tel
 	driver.Status = sql.NullString{String: biz.DriverStatusStop, Valid: true}
 	if err := dt.data.Mdb.Create(&driver).Error; err != nil {
+		// 同一手机号的两次登记可能同时通过「不存在」检查。唯一索引挡住第二次插入后，再把已有行读出来。
+		if strings.Contains(err.Error(), "Duplicate entry") {
+			again := biz.Driver{}
+			if err = dt.data.Mdb.Where("telephone = ?", tel).First(&again).Error; err != nil {
+				return nil, err
+			}
+			return &again, nil
+		}
 		return nil, err
 	}
 	return &driver, nil

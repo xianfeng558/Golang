@@ -4,7 +4,9 @@ package service
 
 import (
 	"context"
-	"math/rand"
+	"crypto/rand"
+	"encoding/binary"
+	"time"
 
 	pb "verifyCode/api/verifyCode"
 )
@@ -54,14 +56,15 @@ func RandCode(length int, kind pb.TYPE) string {
 // idxBits 必须盖住字符集下标：10 个数字用 4 位（0–15），26 个字母用 5 位，36 个混合字符用 6 位。
 // 切出来的数如果大于等于字符集长度，就丢掉再取下一段。
 // 这样每个字符被选中的机会相同。如果直接用下标对长度取模，余数较小的字符会被选得更多。
-// math/rand 从 Go 1.20 起自动播种，这里不再调用 rand.Seed。
+// 随机数来自 crypto/rand。它没有共享的种子，多个请求同时生成验证码也不会互相覆盖状态。
+// math/rand 的全局发生器可以预测，不适合做登录验证码。
 func randCode(chars string, length, idxBits int) string {
 	idxMask := int64(1<<idxBits - 1)
 	idxMax := 63 / idxBits
 	result := make([]byte, length)
-	for i, cache, remain := 0, rand.Int63(), idxMax; i < length; {
+	for i, cache, remain := 0, cryptoInt63(), idxMax; i < length; {
 		if remain == 0 {
-			cache, remain = rand.Int63(), idxMax
+			cache, remain = cryptoInt63(), idxMax
 		}
 		if idx := int(cache & idxMask); idx < len(chars) {
 			result[i] = chars[idx]
@@ -71,4 +74,12 @@ func randCode(chars string, length, idxBits int) string {
 		remain--
 	}
 	return string(result)
+}
+
+func cryptoInt63() int64 {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return time.Now().UnixNano() & 0x7fffffffffffffff
+	}
+	return int64(binary.BigEndian.Uint64(buf[:]) & (1<<63 - 1))
 }

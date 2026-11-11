@@ -39,6 +39,7 @@ func TestChatFlow(t *testing.T) {
 		&models.Contact{},
 		&models.Community{},
 		&models.GroupBasic{},
+		&models.FriendApply{},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -106,9 +107,32 @@ func TestChatFlow(t *testing.T) {
 	}) != 0 {
 		t.Fatal("加好友失败")
 	}
+	nameC := "ginc_" + stamp
+	createUser(t, base, nameC, "pass123")
+	loginC := login(t, base, nameC, "pass123")
+	if postCode(t, base+"/contact/apply", url.Values{
+		"userId": {loginA.id}, "targetName": {nameC}, "remark": {"一起学习"},
+	}) != 0 {
+		t.Fatal("好友申请失败")
+	}
+	if postCode(t, base+"/contact/apply", url.Values{
+		"userId": {loginA.id}, "targetName": {nameB},
+	}) != -1 {
+		t.Fatal("已经是好友时不应再申请成功")
+	}
+	listed := postBody(t, base+"/contact/applyList", url.Values{"userId": {loginC.id}})
+	if !strings.Contains(listed, "一起学习") {
+		t.Fatalf("申请列表里没有附言: %s", listed)
+	}
+	applyID := findJSONID(t, listed)
+	if postCode(t, base+"/contact/applyReply", url.Values{
+		"userId": {loginC.id}, "applyId": {applyID}, "accept": {"1"},
+	}) != 0 {
+		t.Fatal("同意好友申请失败")
+	}
 	friends := postBody(t, base+"/searchFriends", url.Values{"userId": {loginA.id}})
-	if !strings.Contains(friends, nameB) {
-		t.Fatalf("好友列表没有 %s: %s", nameB, friends)
+	if !strings.Contains(friends, nameB) || !strings.Contains(friends, nameC) {
+		t.Fatalf("好友列表应同时有 %s 和 %s: %s", nameB, nameC, friends)
 	}
 
 	groupName := "群" + stamp
@@ -269,6 +293,22 @@ func getOK(t *testing.T, rawURL string) string {
 		t.Fatalf("%s -> %d %s", rawURL, resp.StatusCode, b)
 	}
 	return string(b)
+}
+
+func findJSONID(t *testing.T, raw string) string {
+	t.Helper()
+	var body struct {
+		Rows []struct {
+			ID uint
+		}
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Rows) == 0 || body.Rows[0].ID == 0 {
+		t.Fatalf("列表里没有 ID: %s", raw)
+	}
+	return strconv.FormatUint(uint64(body.Rows[0].ID), 10)
 }
 
 func findIDByName(t *testing.T, raw, name string) string {

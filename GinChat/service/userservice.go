@@ -283,6 +283,38 @@ func AddFriend(c *gin.Context) {
 	utils.RespFail(c.Writer, msg)
 }
 
+// ApplyFriend 发起好友申请，不立刻成为好友。
+// 表单字段 userId 是申请人，targetName 是对方登录名，remark 是附言。
+func ApplyFriend(c *gin.Context) {
+	userId, _ := strconv.Atoi(c.Request.FormValue("userId"))
+	code, msg := models.ApplyFriend(uint(userId), c.Request.FormValue("targetName"), c.Request.FormValue("remark"))
+	if code == 0 {
+		utils.RespOK(c.Writer, code, msg)
+		return
+	}
+	utils.RespFail(c.Writer, msg)
+}
+
+// ListApply 列出发给我的待处理申请。结果在 Rows。
+func ListApply(c *gin.Context) {
+	userId, _ := strconv.Atoi(c.Request.FormValue("userId"))
+	rows := models.ListApply(uint(userId))
+	utils.RespOKList(c.Writer, rows, len(rows))
+}
+
+// ReplyApply 同意或拒绝申请。accept 为 1 表示同意，同意后双方好友列表里都会出现对方。
+func ReplyApply(c *gin.Context) {
+	userId, _ := strconv.Atoi(c.Request.FormValue("userId"))
+	applyID, _ := strconv.Atoi(c.Request.FormValue("applyId"))
+	accept := c.Request.FormValue("accept") == "1"
+	code, msg := models.ReplyApply(uint(userId), uint(applyID), accept)
+	if code == 0 {
+		utils.RespOK(c.Writer, code, msg)
+		return
+	}
+	utils.RespFail(c.Writer, msg)
+}
+
 // CreateCommunity 建群。
 // ownerId 是群主的用户 ID，name 必填。icon 是上传接口返回的头像路径，写入群的 Img。desc 是简介。
 // 成功时群主自己的群列表里会立刻出现这个群。失败原因在 Msg，例如群名为空。

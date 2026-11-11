@@ -37,6 +37,7 @@ func main() {
 		&models.Contact{},
 		&models.Community{},
 		&models.GroupBasic{},
+		&models.FriendApply{},
 	); err != nil {
 		log.Fatal(err)
 	}

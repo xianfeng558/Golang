@@ -52,6 +52,9 @@ func Router() *gin.Engine {
 
 	// 好友和群。这组响应是大写的 Code、Msg、Rows。
 	r.POST("/contact/addfriend", service.AddFriend)
+	r.POST("/contact/apply", service.ApplyFriend)
+	r.POST("/contact/applyList", service.ListApply)
+	r.POST("/contact/applyReply", service.ReplyApply)
 	r.POST("/contact/createCommunity", service.CreateCommunity)
 	r.POST("/contact/loadcommunity", service.LoadCommunity)
 	r.POST("/contact/joinGroup", service.JoinGroups)

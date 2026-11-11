@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -47,15 +48,18 @@ func (table *Message) TableName() string {
 
 // Node 是一个在线用户在本进程里的连接。
 // 读协程负责收浏览器的 JSON，写协程负责把 DataQueue 里的字节写回浏览器，两边不要互相等待。
+// clientMap 用读写锁。心跳时间用原子变量。socket 的写和关共用 writeMu。这三处保护的不是同一份数据，所以没有锁顺序问题。
 type Node struct {
-	Conn          *websocket.Conn // 和这个浏览器之间的长连接
-	Addr          string          // 远端地址，会写进 Redis 的 online_ 值
-	UserId        int64           // 这条连接属于谁，也是 clientMap 的键
-	HeartbeatTime uint64          // 最近一次心跳的 Unix 秒。清理任务拿它和当前时间比
-	LoginTime     uint64          // 这条连接建立时的 Unix 秒
-	DataQueue     chan []byte     // 待写给浏览器的原始 JSON，缓冲 50 条
-	done          chan struct{}   // 关掉它，写协程就退出。只关一次
-	once          sync.Once       // 保证 offline 只跑一遍。读、写、定时器都可能触发清理
+	Conn      *websocket.Conn // 和这个浏览器之间的长连接
+	Addr      string          // 远端地址，会写进 Redis 的 online_ 值
+	UserId    int64           // 这条连接属于谁，也是 clientMap 的键
+	LoginTime uint64          // 这条连接建立时的 Unix 秒
+	DataQueue chan []byte     // 待写给浏览器的原始 JSON，缓冲 50 条
+	done      chan struct{}   // 关掉它，写协程就退出。只关一次
+	once      sync.Once       // 保证 offline 只跑一遍。读、写、定时器都可能触发清理
+	writeMu   sync.Mutex      // gorilla 的连接不能同时 Write 和 Close。写协程和 offline 共用这把锁
+	// heartbeat 是最近一次心跳的 Unix 秒。读协程写，清理协程读，必须用原子操作。
+	heartbeat uint64
 }
 
 var (
@@ -63,8 +67,9 @@ var (
 	clientMap = make(map[int64]*Node)
 	// rwLocker 保护 clientMap。查在线用读锁，登记和删除用写锁。
 	rwLocker sync.RWMutex
-	// udpOn 为 true 时，dispatch 才会把消息再广播到局域网。StartUDP 成功后才置上。
-	udpOn bool
+	// udpOn 为 1 时，dispatch 才会把消息再广播到局域网。StartUDP 成功后才置上。
+	// 用原子变量：写发生在启动协程，读发生在之后的聊天协程。
+	udpOn uint32
 	// udpSend 是待广播的原始 JSON。缓冲 1024，满了就丢，避免拖住聊天协程。
 	udpSend = make(chan []byte, 1024)
 	// seenMsg 记下最近一分钟见过的消息摘要。本机 UDP 会把刚发出去的包收回来，用来挡第二次投递。
@@ -127,14 +132,14 @@ func Chat(writer http.ResponseWriter, request *http.Request) {
 
 	now := uint64(time.Now().Unix())
 	node := &Node{
-		Conn:          conn,
-		Addr:          conn.RemoteAddr().String(),
-		UserId:        userId,
-		HeartbeatTime: now,
-		LoginTime:     now,
-		DataQueue:     make(chan []byte, 50),
-		done:          make(chan struct{}),
+		Conn:      conn,
+		Addr:      conn.RemoteAddr().String(),
+		UserId:    userId,
+		LoginTime: now,
+		DataQueue: make(chan []byte, 50),
+		done:      make(chan struct{}),
 	}
+	atomic.StoreUint64(&node.heartbeat, now)
 	// 先放进表，再让旧连接下线。旧连接的 offline 会核对「表里是不是自己」，
 	// 此时表里已经是新连接，所以它只会关自己的 socket，不会把新连接删掉。
 	rwLocker.Lock()
@@ -157,7 +162,7 @@ func sendProc(node *Node) {
 		case <-node.done:
 			return
 		case data := <-node.DataQueue:
-			if err := node.Conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			if err := node.writeMessage(data); err != nil {
 				log.Println("ws send", node.UserId, err)
 				node.offline()
 				return
@@ -308,11 +313,19 @@ func RedisMsg(userIdA int64, userIdB int64, start int64, end int64, isRev bool) 
 	return rows, nil
 }
 
+// writeMessage 是这条连接唯一的写入口。和 offline 里的 Close 共用 writeMu。
+// gorilla/websocket 规定同一条连接不能并发写，也不能一边写一边关。
+func (node *Node) writeMessage(data []byte) error {
+	node.writeMu.Lock()
+	defer node.writeMu.Unlock()
+	return node.Conn.WriteMessage(websocket.TextMessage, data)
+}
+
 // Heartbeat 记下这条连接还活着。
-// currentTime 是当前的 Unix 秒，写进 HeartbeatTime，供清理任务比较。
+// currentTime 是当前的 Unix 秒。清理任务在另一条协程里读它，所以用原子写。
 // 同时把 Redis 的 online_ 键按配置时长重新写一遍，等于给在线标记续期。
 func (node *Node) Heartbeat(currentTime uint64) {
-	node.HeartbeatTime = currentTime
+	atomic.StoreUint64(&node.heartbeat, currentTime)
 	SetUserOnlineInfo(onlineKey(node.UserId), []byte(node.Addr), onlineTTL())
 }
 
@@ -332,7 +345,9 @@ func (node *Node) offline() {
 			defer cancel()
 			utils.Red.Del(ctx, onlineKey(node.UserId))
 		}
+		node.writeMu.Lock()
 		_ = node.Conn.Close()
+		node.writeMu.Unlock()
 	})
 }
 
@@ -363,14 +378,15 @@ func CleanConnection(param interface{}) (result bool) {
 }
 
 // IsHeartbeatTimeOut 判断这条连接是不是太久没有心跳。
-// currentTime 和 HeartbeatTime 都是 Unix 秒。配置 timeout.HeartbeatMaxTime 也是秒，直接相加。
+// currentTime 和心跳时间都是 Unix 秒。配置 timeout.HeartbeatMaxTime 也是秒，直接相加。
 // 配置缺失或为 0 时返回 false，不把所有人踢下线。
+// 心跳由读协程更新，本函数由定时清理协程调用，两边用原子读，避免数据竞争。
 func (node *Node) IsHeartbeatTimeOut(currentTime uint64) bool {
 	maxWait := viper.GetUint64("timeout.HeartbeatMaxTime")
 	if maxWait == 0 {
 		return false
 	}
-	return node.HeartbeatTime+maxWait <= currentTime
+	return atomic.LoadUint64(&node.heartbeat)+maxWait <= currentTime
 }
 
 // StartUDP 监听配置里的 UDP 端口，并把以后的业务消息广播到 255.255.255.255。
@@ -393,7 +409,7 @@ func StartUDP() {
 		_ = recv.Close()
 		return
 	}
-	udpOn = true
+	atomic.StoreUint32(&udpOn, 1)
 	go udpSendLoop(send)
 	go udpRecvLoop(recv)
 	log.Println("udp broadcast on", port)
@@ -401,7 +417,7 @@ func StartUDP() {
 
 // broadMsg 把原始 JSON 丢进 UDP 发送队列。UDP 没启动，或队列已满，就什么都不做。
 func broadMsg(data []byte) {
-	if !udpOn {
+	if atomic.LoadUint32(&udpOn) == 0 {
 		return
 	}
 	select {

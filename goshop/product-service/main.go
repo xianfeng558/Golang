@@ -21,7 +21,8 @@ import (
 	"goproduct/domain/service"
 	"goproduct/handler"
 	"goproduct/proto"
-	"gorm.io/gorm" // seedProduct 的参数类型。*gorm.DB 是数据库连接
+	"gorm.io/gorm"        // seedProduct 的参数类型。*gorm.DB 是数据库连接
+	"gorm.io/gorm/clause" // 分类种子按主键忽略重复，重复启动不会插出第二份
 )
 
 // 编译时把商品库的 JSON 收进程序。改完要重新 go run。
@@ -59,9 +60,10 @@ func main() {
 		log.Fatal("mysql init err :", err)
 	}
 	// 一次迁移四张表：商品、规格、图文详情、图片。
-	if err := db.AutoMigrate(&model.Product{}, &model.ProductSku{}, &model.ProductDetailRow{}, &model.ProductPicture{}); err != nil {
+	if err := db.AutoMigrate(&model.Category{}, &model.Product{}, &model.ProductSku{}, &model.ProductDetailRow{}, &model.ProductPicture{}); err != nil {
 		log.Fatal("migrate product table err :", err)
 	}
+	seedCategory(db)
 	seedProduct(db)
 
 	productDataService := service.NewProductDataService(repository.NewProductRepository(db))
@@ -108,6 +110,19 @@ func mustLocal(name string) *viper.Viper {
 	}
 	log.Println("loaded local config :", name)
 	return conf
+}
+
+// seedCategory 保证示例商品用到的分类 31 存在，并补上两个顶级分类。
+// 主键冲突时什么都不做，所以重复启动不会插出重名行。
+func seedCategory(db *gorm.DB) {
+	rows := []model.Category{
+		{ID: 1, ParentID: 0, Name: "数码", Sort: 1, IsEnable: true},
+		{ID: 2, ParentID: 0, Name: "图书", Sort: 2, IsEnable: true},
+		{ID: 31, ParentID: 2, Name: "学习示例", Sort: 1, IsEnable: true},
+	}
+	if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error; err != nil {
+		log.Println("seed category err :", err)
+	}
 }
 
 // seedProduct 在空表里放一条商品、一条详情、一张图、一个库存为 100 的规格。

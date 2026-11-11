@@ -53,7 +53,7 @@ func NewData(c *conf.Data, cs *conf.Service, logger log.Logger) (*Data, func(), 
 		_ = rdb.Close()
 		return nil, nil, err
 	}
-	if err := db.AutoMigrate(&biz.Driver{}); err != nil {
+	if err := autoMigrate(db, &biz.Driver{}); err != nil {
 		_ = rdb.Close()
 		return nil, nil, fmt.Errorf("migrate driver: %w", err)
 	}
@@ -66,6 +66,21 @@ func NewData(c *conf.Data, cs *conf.Service, logger log.Logger) (*Data, func(), 
 		log.NewHelper(logger).Info("closing the data resources")
 	}
 	return &Data{Mdb: db, Rdb: rdb, cs: cs}, cleanup, nil
+}
+
+func autoMigrate(db *gorm.DB, models ...interface{}) error {
+	for _, model := range models {
+		session := db
+		if commented, ok := model.(interface{ TableComment() string }); ok {
+			if comment := commented.TableComment(); comment != "" {
+				session = db.Set("gorm:table_options", "COMMENT='"+comment+"'")
+			}
+		}
+		if err := session.AutoMigrate(model); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // openMySQL 先不带库名连上服务器，执行 CREATE DATABASE IF NOT EXISTS，再打开 laomadj_driver。

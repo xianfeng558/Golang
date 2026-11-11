@@ -10,4 +10,5 @@ type Category struct {
 	IsEnable bool   `gorm:"comment:是否在前台展示" json:"isEnable"`
 }
 
-func (Category) TableName() string { return "product_category" }
+func (Category) TableName() string    { return "product_category" }
+func (Category) TableComment() string { return "商品分类" }

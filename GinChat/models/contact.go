@@ -2,19 +2,19 @@ package models
 
 import (
 	"ginchat/utils"
-
-	"gorm.io/gorm"
 )
 
 // Contact 是一条关系，表名 contact。
 // 好友会插两行：A 的名单里有 B，B 的名单里也有 A。群只插一行，成员指向群的数字 ID。
 type Contact struct {
-	gorm.Model
-	OwnerId  uint   // 这条关系属于谁。查好友列表、查我的群，都用这个字段
-	TargetId uint   // 好友时是对方用户 ID，加群时是群 ID
-	Type     int    // 1 好友，2 群成员。同一个表靠它区分两种关系
-	Desc     string // 预留备注，当前加好友和加群都不填
+	Base
+	OwnerId  uint   `gorm:"comment:这条关系属于谁"`
+	TargetId uint   `gorm:"comment:好友时是对方用户 ID，加群时是群 ID"`
+	Type     int    `gorm:"comment:1 好友，2 群成员"`
+	Desc     string `gorm:"comment:备注"`
 }
+
+func (Contact) TableComment() string { return "已成立的好友或群关系" }
 
 // TableName 固定成 contact。不写的话 GORM 会把它变成 contacts。
 func (table *Contact) TableName() string {

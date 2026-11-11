@@ -2,8 +2,6 @@ package models
 
 import (
 	"ginchat/utils"
-
-	"gorm.io/gorm"
 )
 
 // 好友申请的三种状态。同意之后才会写入 contact，页面上的直接加好友接口不受影响。
@@ -15,12 +13,14 @@ const (
 
 // FriendApply 是一条好友申请。FromID 发起，ToID 决定同意或拒绝。
 type FriendApply struct {
-	gorm.Model
+	Base
 	FromID uint   `gorm:"index;comment:申请人用户 ID"`
 	ToID   uint   `gorm:"index;comment:被申请人用户 ID"`
 	Status int    `gorm:"comment:0 待处理，1 已同意，2 已拒绝"`
 	Remark string `gorm:"comment:申请附言"`
 }
+
+func (FriendApply) TableComment() string { return "好友申请，同意后才写入 contact" }
 
 func (FriendApply) TableName() string { return "friend_apply" }
 

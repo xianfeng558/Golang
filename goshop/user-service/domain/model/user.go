@@ -8,18 +8,20 @@ import "time"
 // User 的每个字段都会变成 user 表的一列。
 // autoCreateTime 表示插入时如果没填时间，GORM 用当前时间。
 type User struct {
-	ID            int32     // 主键。GORM 看到名字是 ID 就知道它是主键
-	Avatar        string    `gorm:"default:'https://msb-edu-dev.oss-cn-beijing.aliyuncs.com/default-headimg.png'"`
-	ClientId      int32     `gorm:"default:1"` // 来自哪个客户端，课程登录时要求传 0
-	Nickname      string    `gorm:"default:'随机名称'"`
-	Phone         string    // 登录用的手机号。没有 unique 标签，课程没有禁止重复
-	Password      string    `gorm:"default:'1234'"` // 当前登录流程不校验它
-	SystemId      string    `gorm:"default:1"`
-	LastLoginTime time.Time `gorm:"autoCreateTime"`
-	CreateTime    time.Time `gorm:"autoCreateTime"`
-	IsDeleted     int32     `gorm:"default:0"` // 0 未删除。这里用整数，商品表用的是 bool，两套写法都来自课程
-	UnionId       string    `gorm:"default:'1'"`
+	ID            int32     `gorm:"primaryKey;comment:用户主键"`
+	Avatar        string    `gorm:"default:'https://msb-edu-dev.oss-cn-beijing.aliyuncs.com/default-headimg.png';comment:头像地址"`
+	ClientId      int32     `gorm:"default:1;comment:客户端编号，登录接口要求传 0"`
+	Nickname      string    `gorm:"default:'随机名称';comment:昵称"`
+	Phone         string    `gorm:"comment:登录手机号"`
+	Password      string    `gorm:"default:'1234';comment:当前登录不校验密码"`
+	SystemId      string    `gorm:"default:1;comment:系统编号，登录接口要求传 0"`
+	LastLoginTime time.Time `gorm:"autoCreateTime;comment:最近登录时间"`
+	CreateTime    time.Time `gorm:"autoCreateTime;comment:注册时间"`
+	IsDeleted     int32     `gorm:"default:0;comment:0 未删除"`
+	UnionId       string    `gorm:"default:'1';comment:预留的联合编号"`
 }
+
+func (User) TableComment() string { return "用户。令牌在 Redis，键是用户 ID" }
 
 // TableName 固定表名是 user。不写的话 GORM 会使用 users。
 func (table *User) TableName() string {

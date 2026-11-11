@@ -98,11 +98,23 @@ func InitMySQL() error {
 }
 
 // AutoMigrate 按模型建表、补列。已经有的列和数据留着。
+// 模型如果实现了 TableComment，新建表时会把这句话写成表注释。
 func AutoMigrate(models ...interface{}) error {
 	if DB == nil {
 		return fmt.Errorf("MySQL 还没有初始化")
 	}
-	return DB.AutoMigrate(models...)
+	for _, model := range models {
+		session := DB
+		if commented, ok := model.(interface{ TableComment() string }); ok {
+			if comment := commented.TableComment(); comment != "" {
+				session = DB.Set("gorm:table_options", "COMMENT='"+comment+"'")
+			}
+		}
+		if err := session.AutoMigrate(model); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // InitRedis 按配置创建客户端并 Ping。聊天记录依赖 Redis，连不上就不要假装服务可用。

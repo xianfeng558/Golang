@@ -59,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatal("mysql init err :", err)
 	}
-	if err := db.AutoMigrate(&model.ShoppingCart{}); err != nil {
+	if err := common.AutoMigrateCommented(db, &model.ShoppingCart{}); err != nil {
 		log.Fatal("migrate cart table err :", err)
 	}
 

@@ -2,19 +2,19 @@ package models
 
 import (
 	"ginchat/utils"
-
-	"gorm.io/gorm"
 )
 
 // Community 是一个群，对应表 communities。
 // 页面上的「创建群聊」写的是这张表。group_basic 是另一张留着的旧表，当前建群不写它。
 type Community struct {
-	gorm.Model
-	Name    string // 群名称。加群时可以填这个名字，也可以填数字 ID
-	OwnerId uint   // 群主的用户 ID。建群时同时给他插一条 type=2 的关系
-	Img     string // 群头像。页面上传后把 /asset/upload/... 填进来，表单字段名是 icon
-	Desc    string // 群简介，对应页面上的介绍
+	Base
+	Name    string `gorm:"comment:群名称"`
+	OwnerId uint   `gorm:"comment:群主用户 ID"`
+	Img     string `gorm:"comment:群头像地址"`
+	Desc    string `gorm:"comment:群简介"`
 }
+
+func (Community) TableComment() string { return "群" }
 
 // TableName 固定成 communities，和 GORM 默认的复数形式一致，写出来是为了读代码时不用猜。
 func (table *Community) TableName() string {

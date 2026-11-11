@@ -11,31 +11,31 @@ import (
 	"ginchat/utils"
 	"log"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // UserBasic 对应表 user_basic，一行就是一个注册用户。
-// 内嵌的 gorm.Model 提供 ID、CreatedAt、UpdatedAt、DeletedAt。JSON 里的主键名是 ID，登录页读的是 data.ID。
+// 内嵌的 Base 提供 ID、CreatedAt、UpdatedAt、DeletedAt。JSON 里的主键名是 ID，登录页读的是 data.ID。
 // PassWord 和 Salt 带 json:"-"，注册和登录的响应里不会出现摘要。
 // Identity 是登录后写上的令牌，WebSocket 的 token 必须和它一致。
 type UserBasic struct {
-	gorm.Model
-	Name          string    // 登录名。注册和登录都按它查找，当前没有做成唯一索引，业务层自己挡重复
-	PassWord      string    `json:"-"`                                 // 密码摘要，列名 pass_word。存的是 Md5(明文+盐)，不是明文
-	Phone         string    `valid:"optional,matches(^1[3-9]\\d{9}$)"` // 手机。空着跳过校验，有值时必须是 11 位大陆号码
-	Email         string    `valid:"optional,email"`                   // 邮箱。空着跳过校验，改资料时页面通常不填
-	Avatar        string    // 头像地址。页面字段叫 icon，写入这一列
-	Identity      string    // 登录令牌，大写 MD5。未登录时是空字符串
-	ClientIp      string    // 预留的客户端 IP，当前登录流程没有写入
-	ClientPort    string    // 预留的客户端端口，当前登录流程没有写入
-	Salt          string    `json:"-"` // 6 位数字盐，每人一份。改密码时继续用这一份
-	LoginTime     time.Time // 最近一次签发令牌的时间
-	HeartbeatTime time.Time // 注册时记一笔。连接上的心跳在内存里，不回写这一列
-	LoginOutTime  time.Time `gorm:"column:login_out_time" json:"login_out_time"` // 列名固定成 login_out_time，避免 GORM 自己拆单词
-	IsLogout      bool      // 预留的登出标记。退出登录目前只清浏览器里的 sessionStorage
-	DeviceInfo    string    // 预留的设备信息
+	Base
+	Name          string    `gorm:"comment:登录名"`
+	PassWord      string    `gorm:"comment:密码摘要，MD5(明文加盐)" json:"-"`
+	Phone         string    `gorm:"comment:手机号" valid:"optional,matches(^1[3-9]\\d{9}$)"`
+	Email         string    `gorm:"comment:邮箱" valid:"optional,email"`
+	Avatar        string    `gorm:"comment:头像地址"`
+	Identity      string    `gorm:"comment:登录令牌，WebSocket 的 token 必须等于它"`
+	ClientIp      string    `gorm:"comment:预留的客户端 IP"`
+	ClientPort    string    `gorm:"comment:预留的客户端端口"`
+	Salt          string    `gorm:"comment:6 位数字盐" json:"-"`
+	LoginTime     time.Time `gorm:"comment:最近一次签发令牌的时间"`
+	HeartbeatTime time.Time `gorm:"comment:注册时记下的时间，连接心跳不回写这一列"`
+	LoginOutTime  time.Time `gorm:"column:login_out_time;comment:预留的退出时间" json:"login_out_time"`
+	IsLogout      bool      `gorm:"comment:预留的登出标记"`
+	DeviceInfo    string    `gorm:"comment:预留的设备信息"`
 }
+
+func (UserBasic) TableComment() string { return "注册用户" }
 
 // TableName 固定表名。不写的话 GORM 可能把它变成 user_basics。
 func (table *UserBasic) TableName() string {

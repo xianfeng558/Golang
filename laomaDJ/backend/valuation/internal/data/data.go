@@ -33,13 +33,13 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := db.AutoMigrate(&biz.PriceRule{}); err != nil {
+	if err := autoMigrate(db, &biz.PriceRule{}); err != nil {
 		return nil, nil, fmt.Errorf("migrate price_rule: %w", err)
 	}
 	rules := []biz.PriceRule{
-		{Model: gorm.Model{ID: 1}, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 300, DistanceFee: 35, DurationFee: 10, StartAt: 7, EndAt: 23}},
-		{Model: gorm.Model{ID: 2}, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 350, DistanceFee: 35, DurationFee: 10, StartAt: 23, EndAt: 24}},
-		{Model: gorm.Model{ID: 3}, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 400, DistanceFee: 35, DurationFee: 10, StartAt: 0, EndAt: 7}},
+		{ID: 1, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 300, DistanceFee: 35, DurationFee: 10, StartAt: 7, EndAt: 23}},
+		{ID: 2, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 350, DistanceFee: 35, DurationFee: 10, StartAt: 23, EndAt: 24}},
+		{ID: 3, PriceRuleWork: biz.PriceRuleWork{CityID: 1, StartFee: 400, DistanceFee: 35, DurationFee: 10, StartAt: 0, EndAt: 7}},
 	}
 	if err := db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&rules).Error; err != nil {
 		return nil, nil, fmt.Errorf("seed price_rule: %w", err)
@@ -52,6 +52,21 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		log.NewHelper(logger).Info("closing the data resources")
 	}
 	return &Data{Mdb: db}, cleanup, nil
+}
+
+func autoMigrate(db *gorm.DB, models ...interface{}) error {
+	for _, model := range models {
+		session := db
+		if commented, ok := model.(interface{ TableComment() string }); ok {
+			if comment := commented.TableComment(); comment != "" {
+				session = db.Set("gorm:table_options", "COMMENT='"+comment+"'")
+			}
+		}
+		if err := session.AutoMigrate(model); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // openMySQL 先建库 laomadj_valuation，再打开它。

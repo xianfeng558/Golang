@@ -58,7 +58,7 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		_ = rdb.Close()
 		return nil, nil, err
 	}
-	if err := db.AutoMigrate(&biz.Customer{}, &biz.TripOrder{}); err != nil {
+	if err := autoMigrate(db, &biz.Customer{}, &biz.TripOrder{}); err != nil {
 		_ = rdb.Close()
 		return nil, nil, fmt.Errorf("migrate customer: %w", err)
 	}
@@ -72,6 +72,21 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		log.NewHelper(logger).Info("closing the data resources")
 	}
 	return &Data{Rdb: rdb, Mdb: db}, cleanup, nil
+}
+
+func autoMigrate(db *gorm.DB, models ...interface{}) error {
+	for _, model := range models {
+		session := db
+		if commented, ok := model.(interface{ TableComment() string }); ok {
+			if comment := commented.TableComment(); comment != "" {
+				session = db.Set("gorm:table_options", "COMMENT='"+comment+"'")
+			}
+		}
+		if err := session.AutoMigrate(model); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // openMySQL 先不带库名连上服务器，执行 CREATE DATABASE IF NOT EXISTS，再打开目标库。

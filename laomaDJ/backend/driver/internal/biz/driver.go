@@ -30,10 +30,17 @@ const (
 
 var telephonePattern = regexp.MustCompile(`^(13\d|14[01456879]|15[0-35-9]|16[2567]|17[0-8]|18\d|19[0-35-9])\d{8}$`)
 
-// Driver 对应表 drivers。gorm.Model 带上主键和软删除。
+// Driver 对应表 drivers。主键和三个时间列代替 gorm.Model，这样列注释能写进 MySQL。
 type Driver struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey"`
+	CreatedAt time.Time      `gorm:"comment:创建时间"`
+	UpdatedAt time.Time      `gorm:"comment:更新时间"`
+	DeletedAt gorm.DeletedAt `gorm:"index;comment:软删除时间，有值时普通查询看不到"`
 	DriverWork
+}
+
+func (Driver) TableComment() string {
+	return "司机。验证码在 Redis 2 号库，键是 DVC 加手机号"
 }
 
 // DriverWork 是司机资料。
@@ -41,17 +48,17 @@ type Driver struct {
 // Token 可空。退出时写成 NULL，中间件看到空令牌就拒绝访问。
 // Status 用枚举列，只允许 out、in、listen、stop 四个值。
 type DriverWork struct {
-	Telephone     string         `gorm:"type:varchar(16);uniqueIndex;" json:"telephone"`          // 登录账号
-	Token         sql.NullString `gorm:"type:varchar(2047);" json:"token"`                        // 当前 JWT，jti 是手机号
-	Status        sql.NullString `gorm:"type:enum('out', 'in', 'listen', 'stop');" json:"status"` // 司机状态
-	Name          sql.NullString `gorm:"type:varchar(255);index;" json:"name"`                    // 姓名，尚未录入
-	IdNumber      sql.NullString `gorm:"type:char(18);uniqueIndex;" json:"id_number"`             // 身份证号
-	IdImageA      sql.NullString `gorm:"type:varchar(255);" json:"id_image_a"`                    // 身份证人像面地址
-	LicenseImageA sql.NullString `gorm:"type:varchar(255);" json:"license_image_a"`               // 驾驶证正本地址
-	LicenseImageB sql.NullString `gorm:"type:varchar(255);" json:"license_image_b"`               // 驾驶证副本地址
-	DistinctCode  sql.NullString `gorm:"type:varchar(16);index;" json:"distinct_code"`            // 行政区划代码
-	TelephoneBak  sql.NullString `gorm:"type:varchar(16);index;" json:"telephone_bak"`            // 备用手机号
-	AuditAt       sql.NullTime   `gorm:"index;" json:"audit_at"`                                  // 审核通过时间，未审核时为 NULL
+	Telephone     string         `gorm:"type:varchar(16);uniqueIndex;comment:登录手机号，唯一" json:"telephone"`
+	Token         sql.NullString `gorm:"type:varchar(2047);comment:当前 JWT，退出后为 NULL" json:"token"`
+	Status        sql.NullString `gorm:"type:enum('out', 'in', 'listen', 'stop');comment:out 出车，in 收车，listen 听单，stop 停用" json:"status"`
+	Name          sql.NullString `gorm:"type:varchar(255);index;comment:姓名" json:"name"`
+	IdNumber      sql.NullString `gorm:"type:char(18);uniqueIndex;comment:身份证号，唯一" json:"id_number"`
+	IdImageA      sql.NullString `gorm:"type:varchar(255);comment:身份证人像面地址" json:"id_image_a"`
+	LicenseImageA sql.NullString `gorm:"type:varchar(255);comment:驾驶证正本地址" json:"license_image_a"`
+	LicenseImageB sql.NullString `gorm:"type:varchar(255);comment:驾驶证副本地址" json:"license_image_b"`
+	DistinctCode  sql.NullString `gorm:"type:varchar(16);index;comment:行政区划代码" json:"distinct_code"`
+	TelephoneBak  sql.NullString `gorm:"type:varchar(16);index;comment:备用手机号" json:"telephone_bak"`
+	AuditAt       sql.NullTime   `gorm:"index;comment:审核通过时间" json:"audit_at"`
 }
 
 // DriverInterface 是 data 层必须实现的操作。

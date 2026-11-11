@@ -83,7 +83,7 @@ func main() {
 		log.Fatal("mysql init err :", err)
 	}
 	// AutoMigrate 按 TraderOrder 结构体建表、补列。它不会删列，也不会改已有数据。
-	if err := db.AutoMigrate(&model.TraderOrder{}, &model.TradeOrderItem{}, &model.TradeOrderLog{}); err != nil {
+	if err := common.AutoMigrateCommented(db, &model.TraderOrder{}, &model.TradeOrderItem{}, &model.TradeOrderLog{}); err != nil {
 		log.Fatal("migrate trade table err :", err)
 	}
 

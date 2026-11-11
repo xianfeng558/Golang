@@ -14,7 +14,8 @@ type TradeOrderItem struct {
 	CreateTime time.Time `gorm:"comment:写入时间" json:"createTime"`
 }
 
-func (TradeOrderItem) TableName() string { return "trade_order_item" }
+func (TradeOrderItem) TableName() string    { return "trade_order_item" }
+func (TradeOrderItem) TableComment() string { return "订单行，记下当时的金额快照" }
 
 // TradeOrderLog 记下状态每次变化。面试时用它说明「订单状态不要只改一列，要留流水」。
 type TradeOrderLog struct {
@@ -26,4 +27,5 @@ type TradeOrderLog struct {
 	CreateTime time.Time `gorm:"comment:写入时间" json:"createTime"`
 }
 
-func (TradeOrderLog) TableName() string { return "trade_order_log" }
+func (TradeOrderLog) TableName() string    { return "trade_order_log" }
+func (TradeOrderLog) TableComment() string { return "订单状态流水" }

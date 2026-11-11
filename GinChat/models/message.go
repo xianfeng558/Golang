@@ -17,7 +17,6 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
 	"github.com/spf13/viper"
-	"gorm.io/gorm"
 )
 
 // Message 是一条聊天内容，也对应表 message。
@@ -27,19 +26,21 @@ import (
 // 转发给对方时必须用页面原来的那一段 JSON。如果在服务器里重新 Marshal，
 // 字段会变成 UserId，页面读 data.userId 就是空的。
 type Message struct {
-	gorm.Model
-	UserId     int64  // 发送者用户 ID。页面字段名是 userId
-	TargetId   int64  // 私聊时是对方用户 ID，群聊时是群 ID
-	Type       int    // 去向：1 私聊，2 群聊，3 心跳
-	Media      int    // 形态：1 文字，2 表情，3 语音，4 图片。心跳包里页面会把它设成 -1
-	Content    string // 文字内容。语音和图片主要看 Url
-	CreateTime uint64 // 页面带来的时间。转发时不改写原始 JSON，所以这一列通常没有被插入
-	ReadTime   uint64 // 预留的已读时间，当前收发路径不写
-	Pic        string // 预留图片字段。页面发图片时用的是 Url
-	Url        string // 语音或图片地址，一般是上传接口返回的 /asset/upload/...
-	Desc       string // 预留说明，页面不填
-	Amount     int    // 语音时长，单位秒。页面字段名是 amount
+	Base
+	UserId     int64  `gorm:"comment:发送者用户 ID"`
+	TargetId   int64  `gorm:"comment:私聊时是对方用户 ID，群聊时是群 ID"`
+	Type       int    `gorm:"comment:1 私聊，2 群聊，3 心跳"`
+	Media      int    `gorm:"comment:1 文字，2 表情，3 语音，4 图片"`
+	Content    string `gorm:"comment:文字内容"`
+	CreateTime uint64 `gorm:"comment:页面带来的时间"`
+	ReadTime   uint64 `gorm:"comment:预留的已读时间"`
+	Pic        string `gorm:"comment:预留图片字段"`
+	Url        string `gorm:"comment:语音或图片地址"`
+	Desc       string `gorm:"comment:预留说明"`
+	Amount     int    `gorm:"comment:语音时长，单位秒"`
 }
+
+func (Message) TableComment() string { return "消息表结构，私聊正文实际在 Redis" }
 
 // TableName 固定成 message，避免被收成 messages。
 func (table *Message) TableName() string {

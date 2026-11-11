@@ -20,6 +20,9 @@ type UserAddress struct {
 }
 
 func (UserAddress) TableName() string { return "user_address" }
+func (UserAddress) TableComment() string {
+	return "收货地址，一个用户最多一条默认地址"
+}
 
 // CheckAddress 检查一条地址能不能保存。不访问数据库。
 func CheckAddress(addr UserAddress) error {

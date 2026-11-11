@@ -35,11 +35,18 @@ func ValidTelephone(telephone string) bool {
 }
 
 // Customer 对应表 customers。三个匿名结构体的字段会平铺成同一张表的列，不是三张表。
-// gorm.Model 提供 id、created_at、updated_at、deleted_at。deleted_at 有值的行不会被普通查询查到。
+// deleted_at 有值的行不会被普通查询查到。
 type Customer struct {
-	CustomerWork  // 手机号、姓名这些业务列
-	CustomerToken // 最近一次登录留下的令牌
-	gorm.Model
+	CustomerWork
+	CustomerToken
+	ID        uint           `gorm:"primarykey"`
+	CreatedAt time.Time      `gorm:"comment:创建时间"`
+	UpdatedAt time.Time      `gorm:"comment:更新时间"`
+	DeletedAt gorm.DeletedAt `gorm:"index;comment:软删除时间，有值时普通查询看不到"`
+}
+
+func (Customer) TableComment() string {
+	return "乘客。验证码在 Redis 1 号库，键是 CVC 加手机号"
 }
 
 // CustomerWork 是乘客资料。
@@ -48,18 +55,18 @@ type Customer struct {
 // 唯一列用 varchar(191)，因为 utf8mb4 一个字符最多 4 字节，191×4 不超过旧版 InnoDB 的 1000 字节索引上限。
 // varchar(255) 会在建表时返回 Error 1071。
 type CustomerWork struct {
-	Telephone string         `gorm:"type:varchar(15);uniqueIndex;" json:"telephone"` // 登录账号，11 位手机号
-	Name      sql.NullString `gorm:"type:varchar(191);uniqueIndex;" json:"name"`     // 姓名，可空
-	Email     sql.NullString `gorm:"type:varchar(191);uniqueIndex;" json:"email"`    // 邮箱，可空
-	Wechat    sql.NullString `gorm:"type:varchar(191);uniqueIndex;" json:"wechat"`   // 微信号，可空
-	CityID    uint           `gorm:"index;" json:"city_id"`                          // 所在城市。询价目前固定用城市 1，这列先留着
+	Telephone string         `gorm:"type:varchar(15);uniqueIndex;comment:登录手机号，唯一" json:"telephone"`
+	Name      sql.NullString `gorm:"type:varchar(191);uniqueIndex;comment:姓名，可空" json:"name"`
+	Email     sql.NullString `gorm:"type:varchar(191);uniqueIndex;comment:邮箱，可空" json:"email"`
+	Wechat    sql.NullString `gorm:"type:varchar(191);uniqueIndex;comment:微信号，可空" json:"wechat"`
+	CityID    uint           `gorm:"index;comment:所在城市" json:"city_id"`
 }
 
 // CustomerToken 保存这名乘客当前有效的那一张 JWT。
 // 重新登录会覆盖它，退出会把它清成空串。中间件用请求里的令牌和这一列比对。
 type CustomerToken struct {
-	Token          string       `gorm:"type:varchar(512);" json:"token"` // 完整 JWT。HS256 的三段字符串用 512 足够
-	TokenCreatedAt sql.NullTime `json:"token_created_at"`                // 最近一次签发时间。退出后 Valid 为 false，列变成 NULL
+	Token          string       `gorm:"type:varchar(512);comment:当前 JWT，重新登录会覆盖" json:"token"`
+	TokenCreatedAt sql.NullTime `gorm:"comment:最近一次签发时间" json:"token_created_at"`
 }
 
 // CustomerBiz 处理需要调用其它服务的乘客业务。目前只有询价。

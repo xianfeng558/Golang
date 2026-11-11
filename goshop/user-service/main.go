@@ -59,7 +59,7 @@ func main() {
 		log.Fatal("mysql init err :", err)
 	}
 	// AutoMigrate 按 User 结构体建表或补列，不会删除已有列，也不会改已有数据。
-	if err := db.AutoMigrate(&model.User{}, &model.UserAddress{}); err != nil {
+	if err := common.AutoMigrateCommented(db, &model.User{}, &model.UserAddress{}); err != nil {
 		log.Fatal("migrate user table err :", err)
 	}
 	// 登录令牌存在 Redis 里。连不上就退出，避免服务看起来启动了、登录时才失败。

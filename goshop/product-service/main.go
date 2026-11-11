@@ -60,7 +60,7 @@ func main() {
 		log.Fatal("mysql init err :", err)
 	}
 	// 一次迁移四张表：商品、规格、图文详情、图片。
-	if err := db.AutoMigrate(&model.Category{}, &model.Product{}, &model.ProductSku{}, &model.ProductDetailRow{}, &model.ProductPicture{}); err != nil {
+	if err := common.AutoMigrateCommented(db, &model.Category{}, &model.Product{}, &model.ProductSku{}, &model.ProductDetailRow{}, &model.ProductPicture{}); err != nil {
 		log.Fatal("migrate product table err :", err)
 	}
 	seedCategory(db)

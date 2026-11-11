@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"valuation/api/mapService"
 	"valuation/internal/discover"
@@ -17,19 +18,24 @@ const includedKilometers int64 = 5
 
 // PriceRule 对应表 price_rules。费用字段的单位都是分，不是元。
 type PriceRule struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey"`
+	CreatedAt time.Time      `gorm:"comment:创建时间"`
+	UpdatedAt time.Time      `gorm:"comment:更新时间"`
+	DeletedAt gorm.DeletedAt `gorm:"index;comment:软删除时间，有值时普通查询看不到"`
 	PriceRuleWork
 }
+
+func (PriceRule) TableComment() string { return "计价规则，金额单位是分" }
 
 // PriceRuleWork 是一条城市时段规则。
 // StartAt、EndAt 是小时，区间左闭右开。7 和 23 表示从 7 点到 23 点之前，23 点整不再使用这条规则。
 type PriceRuleWork struct {
-	CityID      uint  `json:"city_id"`                  // 城市编号。示例数据只有 1
-	StartFee    int64 `json:"start_fee"`                // 起步价，单位分。白天示例是 300，即 3 元
-	DistanceFee int64 `json:"distance_fee"`             // 超出起步里程后，每公里的费用，单位分
-	DurationFee int64 `json:"duration_fee"`             // 每分钟的费用，单位分
-	StartAt     int   `gorm:"type:int" json:"start_at"` // 开始小时，包含
-	EndAt       int   `gorm:"type:int" json:"end_at"`   // 结束小时，不包含
+	CityID      uint  `gorm:"comment:城市编号" json:"city_id"`
+	StartFee    int64 `gorm:"comment:起步价，单位分，含 5 公里" json:"start_fee"`
+	DistanceFee int64 `gorm:"comment:超出起步里程后每公里费用，单位分" json:"distance_fee"`
+	DurationFee int64 `gorm:"comment:每分钟费用，单位分" json:"duration_fee"`
+	StartAt     int   `gorm:"type:int;comment:开始小时，包含" json:"start_at"`
+	EndAt       int   `gorm:"type:int;comment:结束小时，不包含" json:"end_at"`
 }
 
 // PriceRuleInterface 按城市和当前小时取出唯一一条规则。查不到时返回错误。

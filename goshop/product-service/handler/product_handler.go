@@ -98,6 +98,7 @@ func (u *ProductHandler) ShowDetailSku(ctx context.Context, req *proto.ProductDe
 }
 
 // UpdateSku 修改规格库存。请求里没有规格数据时直接失败。
+// Name 为库存增减标记时，Stock 是增减量，由 repository 用一条条件更新完成，避免并发加购互相覆盖。
 func (u *ProductHandler) UpdateSku(ctx context.Context, req *proto.UpdateSkuReq, resp *proto.UpdateSkuResp) error {
 	if req.GetProductSku() == nil {
 		resp.IsSuccess = false

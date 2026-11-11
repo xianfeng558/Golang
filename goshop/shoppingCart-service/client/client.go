@@ -5,33 +5,32 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"log"
+	"net"
+	"net/http"
+	"strconv"
+	"time"
+
 	common "git.mashibing.com/msb_47094/shopping-comm"
 	"github.com/afex/hystrix-go/hystrix"
 	consul "github.com/asim/go-micro/plugins/registry/consul/v4"
 	"github.com/dtm-labs/dtm/client/dtmcli"
+	"github.com/gin-gonic/gin"
 	"github.com/go-micro/plugins/v4/wrapper/select/roundrobin"
 	opentracing2 "github.com/go-micro/plugins/v4/wrapper/trace/opentracing"
 	"github.com/lithammer/shortuuid/v3"
 	"github.com/opentracing/opentracing-go"
-	"go-micro.dev/v4/client"
-	"go-micro.dev/v4/web"
-	"log"
-	"net"
-	"net/http"
-	"shoppingCart/proto"
-	"strconv"
-
-	"github.com/gin-gonic/gin"
 	"go-micro.dev/v4"
+	"go-micro.dev/v4/client"
 	"go-micro.dev/v4/registry"
+	"go-micro.dev/v4/web"
+	"shoppingCart/proto"
 )
 
 // 获取远程服务的客户端
 func main() {
-	var CartId int32 = 1
-	var Number int32 = 1
-	resp := &proto.AddCartResp{}
-
 	router := gin.Default()
 
 	// 没有 Consul 时不要注册，否则客户端只会去一个不存在的注册中心找服务。
@@ -89,12 +88,7 @@ func main() {
 			common.RespFail(c.Writer, &proto.AddCartResp{}, "请在请求头 Uuid 里带上登录返回的用户 ID，例如 2")
 			return
 		}
-		cc := common.GetInput(uuid)
-		out := common.SQ(cc)
-		sum := 0
-		for o := range out {
-			sum += o
-		}
+		userID := userIDFromHeader(uuid)
 		//Token校验
 		//拼接请求信息
 		tokenReq := &proto.TokenReq{
@@ -116,7 +110,7 @@ func main() {
 			Number:       int32(number),
 			ProductId:    int32(productId),
 			ProductSkuId: int32(productSkuId),
-			UserId:       int32(sum),
+			UserId:       userID,
 		}
 		resp := &proto.AddCartResp{}
 		//商品详情
@@ -152,15 +146,12 @@ func main() {
 			common.RespFail(c.Writer, &proto.AddCartResp{}, "库存不足，添加失败")
 			return
 		}
-		sku := respSkuDetail.ProductSku[0]
-		sku.Stock -= req.Number
-		updateSkuReq := &proto.UpdateSkuReq{
-			ProductSku: sku,
-		}
+		// 增减量交给数据库一条 SQL 完成。不要在网关里先减再把绝对库存写回去，并发加购会互相覆盖。
+		updateSkuReq := stockDelta(respSkuDetail.ProductSku[0].SkuId, -req.Number)
 		respUpdate, err := UpdateSkuClient.UpdateSku(context.TODO(), updateSkuReq)
-		if err != nil {
+		if err != nil || respUpdate == nil || !respUpdate.IsSuccess {
 			log.Println(" /UpdateSku  err :", err)
-			common.RespFail(c.Writer, resp, "修改库存失败！")
+			common.RespFail(c.Writer, resp, "库存不足，添加失败")
 			return
 		}
 		log.Println(" /UpdateSkuClient  resp :", respUpdate.IsSuccess)
@@ -169,13 +160,15 @@ func main() {
 		//根据响应做输出
 		if err != nil {
 			log.Println("addCart err ", err)
-			updateSkuReq.ProductSku.Stock += req.Number
+			updateSkuReq.ProductSku.Stock = req.Number
 			_, err = UpdateSkuClient.UpdateSku(context.TODO(), updateSkuReq)
 			log.Println("rollback sku  is Err :", err)
 			common.RespFail(c.Writer, resp, "添加购物车失败！")
 			return
 		}
-		resp.ProductSkuSimple = respSkuDetail.ProductSku[0]
+		shown := *respSkuDetail.ProductSku[0]
+		shown.Stock -= req.Number
+		resp.ProductSkuSimple = &shown
 		resp.ProductSimple = respDetail.ProductDetail[0]
 		log.Println(" /AddCart  resp :", resp)
 		////writer  data  message  row  total  field
@@ -204,7 +197,11 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"dtm_reslut": "FAILURE", "Message": err.Error()})
 			return
 		}
-		req.ProductSku.Stock += Number
+		// 正向请求里的 Stock 是负数。补偿把符号反过来，加回刚才扣掉的数量。
+		// 数量写在这一次请求的 JSON 里，不再用进程级变量，两个用户同时下单不会扣错库存。
+		if req.ProductSku != nil && req.ProductSku.Name == common.StockDeltaName {
+			req.ProductSku.Stock = -req.ProductSku.Stock
+		}
 		_, err := UpdateSkuClient.UpdateSku(context.TODO(), req)
 		if err != nil {
 			log.Println("/updateSku err ", err)
@@ -225,8 +222,6 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{"dtm_reslut": "FAILURE", "Message": "新增购物车失败!"})
 			return
 		}
-		resp = added
-		CartId = resp.ID
 
 		c.JSON(http.StatusOK, gin.H{"addCart": "SUCCESS", "Message": "新增购物车成功!"})
 	})
@@ -236,14 +231,14 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"dtm_reslut": "FAILURE", "Message": err.Error()})
 			return
 		}
-		req.Id = CartId
+		// id 来自提交 Saga 时放进请求体的主键。补偿和正向看到的是同一份 JSON。
+		req.IsDeleted = true
 		updated, err := UpdateCartClient.UpdateCart(context.TODO(), req)
 		if err != nil || updated == nil {
 			log.Println("/addCart-compensate err ", err)
 			c.JSON(http.StatusOK, gin.H{"dtm_reslut": "FAILURE", "Message": "删除购物车失败!"})
 			return
 		}
-		CartId = updated.ID
 		c.JSON(http.StatusOK, gin.H{"addCart-compensate": "SUCCESS", "Message": "删除购物车成功!"})
 	})
 
@@ -256,12 +251,7 @@ func main() {
 			common.RespFail(c.Writer, &proto.AddCartResp{}, "请在请求头 Uuid 里带上登录返回的用户 ID，例如 2")
 			return
 		}
-		cc := common.GetInput(uuid)
-		out := common.SQ(cc)
-		sum := 0
-		for o := range out {
-			sum += o
-		}
+		userID := userIDFromHeader(uuid)
 		//Token校验
 		//拼接请求信息
 		tokenReq := &proto.TokenReq{
@@ -280,11 +270,12 @@ func main() {
 
 		//拼接请求信息
 		req := &proto.AddCartReq{
+			Id:           newCartID(),
 			Number:       int32(number),
 			ProductId:    int32(productId),
 			ProductSkuId: int32(productSkuId),
-			UserId:       int32(sum),
-			CreateUser:   int32(sum),
+			UserId:       userID,
+			CreateUser:   userID,
 		}
 		resp := &proto.AddCartResp{}
 		//商品详情
@@ -320,13 +311,10 @@ func main() {
 			common.RespFail(c.Writer, &proto.AddCartResp{}, "库存不足，添加失败")
 			return
 		}
-		sku := respSkuDetail.ProductSku[0]
-		sku.Stock -= req.Number
-		Number = req.Number //
-		updateSkuReq := &proto.UpdateSkuReq{
-			ProductSku: sku,
-		}
-		resp.ProductSkuSimple = respSkuDetail.ProductSku[0]
+		updateSkuReq := stockDelta(respSkuDetail.ProductSku[0].SkuId, -req.Number)
+		shown := *respSkuDetail.ProductSku[0]
+		shown.Stock -= req.Number
+		resp.ProductSkuSimple = &shown
 		resp.ProductSimple = respDetail.ProductDetail[0]
 
 		//全局事务
@@ -369,5 +357,39 @@ func NewClientHystrixWrapper() client.Wrapper {
 	return func(i client.Client) client.Client {
 		return &clientWrapper{i}
 	}
+}
 
+// userIDFromHeader 把请求头 Uuid 还原成用户 ID。
+// 登录时同一份令牌既写了十进制 ID，也写了二进制形式，两种请求头都能通过。
+func userIDFromHeader(uuid string) int32 {
+	return int32(common.ToInt(uuid))
+}
+
+// stockDelta 构造一次原子改库存。delta 为负表示扣减，为正表示加回。
+func stockDelta(skuID, delta int32) *proto.UpdateSkuReq {
+	return &proto.UpdateSkuReq{
+		ProductSku: &proto.ProductSku{
+			SkuId: skuID,
+			Name:  common.StockDeltaName,
+			Stock: delta,
+		},
+	}
+}
+
+// newCartID 在提交 Saga 之前生成购物车主键。
+// 正向插入和失败补偿都带着这个数，不依赖进程里的全局变量。
+func newCartID() int32 {
+	var buf [4]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		id := int32(time.Now().UnixNano() & 0x7fffffff)
+		if id == 0 {
+			return 1
+		}
+		return id
+	}
+	id := int32(binary.BigEndian.Uint32(buf[:]) & 0x7fffffff)
+	if id == 0 {
+		return 1
+	}
+	return id
 }

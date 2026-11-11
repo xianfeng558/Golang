@@ -75,6 +75,11 @@ func ConverToBinary(n int) string {
 	return res
 }
 
+// StockDeltaName 标记这一次改库存：Stock 字段是增减量，不是要写成的绝对库存。
+// 负数表示扣减。商品服务用一条 SQL 做 stock = stock + Stock，并且拒绝把库存减成负数。
+// 这个字符串只出现在 RPC 请求里，不会写入 product_sku.name。
+const StockDeltaName = "__stock_delta__"
+
 // SplitToInt32List 把 "12,35,66" 这种查询参数拆成整数切片。空片段和非法数字会被跳过。
 func SplitToInt32List(str string, sep string) []int32 {
 	tempStr := strings.Split(str, sep)

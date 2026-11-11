@@ -148,12 +148,8 @@ func main() {
 			common.RespFail(c.Writer, resp, "请在请求头 Uuid 里带上登录返回的用户 ID，例如 2")
 			return
 		}
-		cc := common.GetInput(uuid)
-		out := common.SQ(cc)
-		sum := 0
-		for o := range out {
-			sum += o
-		}
+		// Uuid 可能是十进制用户 ID，也可能是它的二进制形式。ToInt 按二进制字符串还原。
+		sum := common.ToInt(uuid)
 		//Token校验
 		//拼接请求信息
 		tokenReq := &proto.TokenReq{

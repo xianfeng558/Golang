@@ -4,6 +4,7 @@ package repository
 import (
 	"errors"
 
+	common "git.mashibing.com/msb_47094/shopping-comm"
 	"goproduct/domain/model"
 	"goproduct/proto"
 	"gorm.io/gorm"
@@ -89,9 +90,30 @@ func (u *ProductRepository) ShowDetailSku(id int32) (*model.ProductSku, error) {
 	return productSku, nil
 }
 
-// UpdateSku 只改库存这一列。GORM 的日志已经会打印 SQL，这里不再额外打开 Debug。
+// UpdateSku 改某一条规格的库存。
+//
+// 普通请求把 Stock 当成目标库存，直接覆盖。两个请求同时读到 10、都写回 9 时，会少扣一次。
+// 加购不走这条覆盖路径。请求的 Name 等于 common.StockDeltaName 时，Stock 是增减量：
+// 一条 UPDATE 同时完成「够不够」和「减去多少」。后到的请求如果会减成负数，影响行数是 0，库存保持原样。
+// 数据库对这一行加锁，两个加购不会读到同一份旧库存再各自写回。
 func (u *ProductRepository) UpdateSku(req *proto.UpdateSkuReq) (bool, error) {
 	sku := req.GetProductSku()
+	if sku == nil || sku.SkuId == 0 {
+		return false, errors.New("规格不存在")
+	}
+	if sku.Name == common.StockDeltaName {
+		res := u.mysqlDB.Exec(
+			"UPDATE product_sku SET stock = stock + ? WHERE id = ? AND stock + ? >= 0",
+			sku.Stock, sku.SkuId, sku.Stock,
+		)
+		if res.Error != nil {
+			return false, res.Error
+		}
+		if res.RowsAffected == 0 {
+			return false, errors.New("库存不足或规格不存在")
+		}
+		return true, nil
+	}
 	tb := u.mysqlDB.Model(&model.ProductSku{}).Where("id=?", sku.SkuId).Update("stock", sku.Stock)
 	return tb.Error == nil, tb.Error
 }

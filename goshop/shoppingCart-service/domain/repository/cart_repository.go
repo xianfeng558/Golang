@@ -25,6 +25,9 @@ type CartRepository struct {
 	mysqlDB *gorm.DB
 }
 
+// AddCart 插入一行。req.Id 大于 0 时使用调用方事先生成的主键。
+// 分布式事务的正向和补偿是两次独立 HTTP，补偿请求里必须已经带着这一行的 ID。
+// 如果等插入成功后再把自增 ID 存进进程变量，两个用户同时下单会互相覆盖。
 func (u *CartRepository) AddCart(req *proto.AddCartReq) (*model.ShoppingCart, error) {
 	cart := model.ShoppingCart{
 		Number:             req.Number,
@@ -36,10 +39,17 @@ func (u *CartRepository) AddCart(req *proto.AddCartReq) (*model.ShoppingCart, er
 		CreateUser:         req.CreateUser,
 		CreateTime:         time.Now(),
 	}
+	if req.Id > 0 {
+		cart.ID = req.Id
+	}
 	tb := u.mysqlDB.Create(&cart)
 	return &cart, tb.Error
 }
 
+// UpdateCart 按主键更新购物车。
+// GORM 用结构体 Updates 时会跳过零值，bool 的 false 也算零值。
+// 订单补偿要把 is_deleted 从 true 改回 false，不指定列的话这一列写不进去，购物车会一直保持删除。
+// 只把请求里真正带了的列放进 Select，避免补偿请求里的空字符串把商品名清掉。
 func (u *CartRepository) UpdateCart(req *proto.UpdateCartReq) (*model.ShoppingCart, error) {
 	cart := model.ShoppingCart{
 		Number:             req.Number,
@@ -53,7 +63,33 @@ func (u *CartRepository) UpdateCart(req *proto.UpdateCartReq) (*model.ShoppingCa
 		UpdateUser:         req.UpdateUser,
 		UpdateTime:         time.Now(),
 	}
-	tb := u.mysqlDB.Model(&model.ShoppingCart{}).Where("id = ?", cart.ID).Updates(&cart)
+	db := u.mysqlDB.Model(&model.ShoppingCart{}).Where("id = ?", cart.ID)
+	if !req.IsDeleted {
+		cols := []string{"IsDeleted", "UpdateTime"}
+		if req.Number != 0 {
+			cols = append(cols, "Number")
+		}
+		if req.ProductId != 0 {
+			cols = append(cols, "ProductId")
+		}
+		if req.ProductSkuId != 0 {
+			cols = append(cols, "ProductSkuId")
+		}
+		if req.ProductName != "" {
+			cols = append(cols, "ProductName")
+		}
+		if req.ProductMainPicture != "" {
+			cols = append(cols, "ProductMainPicture")
+		}
+		if req.UserId != 0 {
+			cols = append(cols, "UserId")
+		}
+		if req.UpdateUser != 0 {
+			cols = append(cols, "UpdateUser")
+		}
+		db = db.Select(cols)
+	}
+	tb := db.Updates(&cart)
 	return &cart, tb.Error
 }
 
